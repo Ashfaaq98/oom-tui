@@ -49,8 +49,18 @@ fn regexes() -> &'static Regexes {
             r"^oom-kill:constraint=(?P<constraint>\S+?),.*?task_memcg=(?P<memcg>\S+?),task=(?P<task>.+?),pid=(?P<pid>\d+),uid=(?P<uid>\d+)",
         )
         .unwrap(),
+        // The kernel picks this message prefix per code path, so anchoring on a
+        // bare "Out of memory:" silently drops the two most interesting cases:
+        //
+        //   Out of memory: Killed process ...                            (global)
+        //   Memory cgroup out of memory: Killed process ...              (memcg / container)
+        //   Out of memory (oom_kill_allocating_task): Killed process ...
+        //
+        // `msg` is captured rather than skipped because "was this the container's
+        // limit or the whole host?" is the first question worth answering.
+        // `pgtables:` is absent on kernels older than ~4.19, so it stays optional.
         killed: Regex::new(
-            r"^(?i:(?:Memory cgroup )?Out of memory:)\s*Killed process\s+(?P<pid>\d+)\s*\((?P<name>[^)]+)\)(?:,\s*UID\s*(?P<uid1>\d+))?[,\s]*total-vm:(?P<vm>\d+)kB,\s*anon-rss:(?P<arss>\d+)kB,\s*file-rss:(?P<frss>\d+)kB,\s*shmem-rss:(?P<srss>\d+)kB(?:,\s*UID:(?P<uid2>\d+))?\s*pgtables:(?P<pgt>\d+)kB\s*oom_score_adj:(?P<adj>-?\d+)",
+            r"^(?P<msg>Memory cgroup out of memory|Out of memory(?:\s*\([^)]*\))?):\s*Killed process\s+(?P<pid>\d+)\s*\((?P<name>[^)]+)\)(?:,\s*UID\s*(?P<uid1>\d+))?[,\s]*total-vm:(?P<vm>\d+)kB,\s*anon-rss:(?P<arss>\d+)kB,\s*file-rss:(?P<frss>\d+)kB,\s*shmem-rss:(?P<srss>\d+)kB(?:,\s*UID:(?P<uid2>\d+))?(?:,?\s*pgtables:(?P<pgt>\d+)kB)?\s*oom_score_adj:(?P<adj>-?\d+)",
         )
         .unwrap(),
         reaped: Regex::new(r"^oom_reaper:\s*reaped process\s+(?P<pid>\d+)\s*\((?P<name>[^)]+)\)")
@@ -156,6 +166,14 @@ pub fn parse_log(text: &str) -> Vec<OomEvent> {
                 None => (None, None),
             };
 
+            // Which kernel code path did the killing. The message prefix is
+            // authoritative and is present on every kill line; CONSTRAINT_MEMCG
+            // corroborates it for logs where only the constraint line survived.
+            let memcg_kill = caps
+                .name("msg")
+                .is_some_and(|m| m.as_str().starts_with("Memory cgroup"))
+                || constraint.as_deref() == Some("CONSTRAINT_MEMCG");
+
             let event = OomEvent {
                 timestamp: ts,
                 trigger_process,
@@ -163,6 +181,7 @@ pub fn parse_log(text: &str) -> Vec<OomEvent> {
                 order,
                 constraint,
                 cgroup,
+                memcg_kill,
                 victim_name: name,
                 victim_pid: pid,
                 uid,
@@ -249,12 +268,71 @@ mod tests {
         assert_eq!(events[0].victim_name, "worker");
     }
 
+    /// `Out of memory (oom_kill_allocating_task):` - emitted when the sysctl
+    /// of the same name is set, so the allocating task is killed directly.
+    const ALLOCATING_TASK_SAMPLE: &str = "[ 900.100000] Out of memory (oom_kill_allocating_task): Killed process 77 (java) total-vm:2000kB, anon-rss:1000kB, file-rss:0kB, shmem-rss:0kB, UID:0 pgtables:16kB oom_score_adj:0";
+
+    /// Kernels older than ~4.19 don't print the `pgtables:` field at all.
+    const NO_PGTABLES_SAMPLE: &str = "Mar 24 18:41:04 host kernel: Out of memory: Killed process 1234 (redis-server) total-vm:100000kB, anon-rss:90000kB, file-rss:0kB, shmem-rss:0kB, UID:999 oom_score_adj:0";
+
+    /// A container kill as it actually appears on a Kubernetes node.
+    const K8S_MEMCG_SAMPLE: &str = "\
+[ 512.100000] node invoked oom-killer: gfp_mask=0xcc0(GFP_KERNEL), order=0, oom_score_adj=968
+[ 512.100100] oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=cri-containerd-abc123.scope,mems_allowed=0,oom_memcg=/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod9f2c.slice,task_memcg=/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod9f2c.slice/cri-containerd-abc123.scope,task=node,pid=4242,uid=0
+[ 512.100200] Memory cgroup out of memory: Killed process 4242 (node) total-vm:1265804kB, anon-rss:1022856kB, file-rss:4096kB, shmem-rss:0kB, UID:0 pgtables:2496kB oom_score_adj:968
+";
+
     #[test]
     fn parses_memory_cgroup_kill() {
         let events = parse_log(MEMCG_SAMPLE);
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].victim_pid, 42);
         assert_eq!(events[0].victim_name, "stress-ng-vm");
+        // The whole point: this was a container limit, not host exhaustion.
+        assert!(events[0].memcg_kill);
+    }
+
+    #[test]
+    fn parses_oom_kill_allocating_task_variant() {
+        let events = parse_log(ALLOCATING_TASK_SAMPLE);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].victim_name, "java");
+        assert_eq!(events[0].victim_pid, 77);
+        assert!(!events[0].memcg_kill);
+    }
+
+    #[test]
+    fn parses_old_kernel_line_without_pgtables() {
+        let events = parse_log(NO_PGTABLES_SAMPLE);
+        assert_eq!(events.len(), 1);
+        let e = &events[0];
+        assert_eq!(e.victim_name, "redis-server");
+        assert_eq!(e.anon_rss_kb, Some(90000));
+        assert_eq!(e.pgtables_kb, None);
+        assert_eq!(e.oom_score_adj, Some(0));
+    }
+
+    #[test]
+    fn parses_kubernetes_container_kill_with_full_context() {
+        let events = parse_log(K8S_MEMCG_SAMPLE);
+        assert_eq!(events.len(), 1);
+        let e = &events[0];
+        assert_eq!(e.victim_name, "node");
+        assert_eq!(e.victim_pid, 4242);
+        assert!(e.memcg_kill);
+        assert_eq!(e.constraint.as_deref(), Some("CONSTRAINT_MEMCG"));
+        assert_eq!(e.oom_score_adj, Some(968));
+        assert_eq!(e.rss_total_kb(), Some(1022856 + 4096));
+        assert!(e
+            .cgroup
+            .as_deref()
+            .is_some_and(|c| c.contains("cri-containerd-abc123.scope")));
+    }
+
+    #[test]
+    fn global_kill_is_not_flagged_as_cgroup_kill() {
+        let events = parse_log(SAMPLE);
+        assert!(!events[0].memcg_kill);
     }
 
     #[test]

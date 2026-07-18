@@ -145,6 +145,7 @@ fn draw_detail(f: &mut Frame, area: Rect, app: &App) {
 fn draw_identity(f: &mut Frame, area: Rect, event: &OomEvent) {
     let rows = vec![
         detail_row("VICTIM", format!("{}  (PID {})", event.victim_name, event.victim_pid), TEXT),
+        detail_row("SCOPE", scope_label(event), if event.memcg_kill { CYAN } else { WARNING }),
         detail_row("TIMESTAMP", event.timestamp.clone().unwrap_or_else(|| "—".to_string()), TEXT),
         detail_row("UID", option_u32(event.uid), TEXT),
         detail_row("OOM SCORE ADJ", option_i32(event.oom_score_adj), TEXT),
@@ -155,6 +156,19 @@ fn draw_identity(f: &mut Frame, area: Rect, event: &OomEvent) {
         detail_row("REAPER", if event.reaped { "confirmed — memory reclaimed".to_string() } else { "not confirmed in log window".to_string() }, if event.reaped { GOOD } else { WARNING }),
     ];
     f.render_widget(detail_table(rows, "INCIDENT CONTEXT"), area);
+}
+
+/// The first question to answer about any containerised kill, because the two
+/// answers have completely different fixes: raise the limit / fix the leak, or
+/// stop oversubscribing the host.
+fn scope_label(event: &OomEvent) -> String {
+    // Kept short deliberately: this renders in a half-width column and the
+    // longer phrasing was silently truncated at the panel edge.
+    if event.memcg_kill {
+        "cgroup / container limit".to_string()
+    } else {
+        "host-wide exhaustion".to_string()
+    }
 }
 
 fn draw_memory(f: &mut Frame, area: Rect, event: &OomEvent) {

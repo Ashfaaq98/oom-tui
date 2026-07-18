@@ -20,6 +20,14 @@ pub struct OomEvent {
     pub constraint: Option<String>,
     pub cgroup: Option<String>,
 
+    /// True when the kill satisfied a *cgroup memory limit* rather than
+    /// global host exhaustion. This is the first thing worth knowing about
+    /// any containerised kill: hitting your own limit means "raise the limit
+    /// or fix the leak", whereas global exhaustion means the host is
+    /// oversubscribed and this container may just have been the biggest
+    /// target rather than the actual cause.
+    pub memcg_kill: bool,
+
     // --- the victim ---
     pub victim_name: String,
     pub victim_pid: u32,
