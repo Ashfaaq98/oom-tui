@@ -262,6 +262,9 @@ mod tests {
         let summary = id.summary();
         assert!(summary.contains("kubernetes"));
         assert!(summary.contains("Burstable"));
-        assert!(!summary.contains("3f8a9c2b1d4e5f6a7b8c9d0e"), "id should be shortened");
+        assert!(
+            !summary.contains("3f8a9c2b1d4e5f6a7b8c9d0e"),
+            "id should be shortened"
+        );
     }
 }

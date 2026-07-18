@@ -76,9 +76,7 @@ pub fn load(opts: &SourceOptions) -> Result<LogSource> {
     // Everything below reads whatever the backend happens to hold; none of it
     // can honour --boot/--since, so say so instead of implying we did.
     let warning = if opts.needs_journal() {
-        Some(
-            "journalctl unavailable - boot/time filters were ignored by this source".to_string(),
-        )
+        Some("journalctl unavailable - boot/time filters were ignored by this source".to_string())
     } else {
         None
     };

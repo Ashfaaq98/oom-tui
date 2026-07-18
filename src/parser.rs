@@ -355,7 +355,10 @@ mod tests {
     fn parses_human_readable_dmesg_timestamp() {
         let events = parse_log(DMESG_HUMAN_SAMPLE);
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0].timestamp.as_deref(), Some("Sat Jul 18 09:03:34 2026"));
+        assert_eq!(
+            events[0].timestamp.as_deref(),
+            Some("Sat Jul 18 09:03:34 2026")
+        );
         assert_eq!(events[0].victim_name, "worker");
     }
 
@@ -452,7 +455,11 @@ mod tests {
         let e = &events[0];
         assert_eq!(e.processes.len(), 3);
 
-        let worker = e.processes.iter().find(|p| p.name == "leaky-worker").unwrap();
+        let worker = e
+            .processes
+            .iter()
+            .find(|p| p.name == "leaky-worker")
+            .unwrap();
         assert_eq!(worker.pid, 1200);
         assert_eq!(worker.uid, 1000);
         // The kernel prints pages; we report kB.

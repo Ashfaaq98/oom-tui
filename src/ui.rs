@@ -28,7 +28,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         ])
         .split(f.size());
 
-    f.render_widget(Block::default().style(Style::default().bg(SURFACE)), f.size());
+    f.render_widget(
+        Block::default().style(Style::default().bg(SURFACE)),
+        f.size(),
+    );
     draw_header(f, root[0], app);
     draw_timeline(f, root[1], app);
     draw_detail(f, root[2], app);
@@ -49,11 +52,20 @@ fn panel(title: &'static str) -> Block<'static> {
 fn draw_header(f: &mut Frame, area: Rect, app: &App) {
     let count = app.events.len();
     let title = Line::from(vec![
-        Span::styled(" OOM", Style::default().fg(CRITICAL).add_modifier(Modifier::BOLD)),
-        Span::styled(" // INCIDENT CONSOLE", Style::default().fg(TEXT).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            " OOM",
+            Style::default().fg(CRITICAL).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            " // INCIDENT CONSOLE",
+            Style::default().fg(TEXT).add_modifier(Modifier::BOLD),
+        ),
     ]);
     let meta = Line::from(vec![
-        Span::styled(format!(" {count} incident{} ", if count == 1 { "" } else { "s" }), Style::default().fg(CYAN)),
+        Span::styled(
+            format!(" {count} incident{} ", if count == 1 { "" } else { "s" }),
+            Style::default().fg(CYAN),
+        ),
         Span::styled("•  ", Style::default().fg(MUTED)),
         Span::styled(&app.source_description, Style::default().fg(MUTED)),
     ]);
@@ -68,13 +80,24 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
 fn draw_timeline(f: &mut Frame, area: Rect, app: &mut App) {
     if app.events.is_empty() {
         let message = vec![
-            Line::styled("No OOM kills found", Style::default().fg(GOOD).add_modifier(Modifier::BOLD)),
-            Line::styled("The selected kernel log source is clear.", Style::default().fg(MUTED)),
+            Line::styled(
+                "No OOM kills found",
+                Style::default().fg(GOOD).add_modifier(Modifier::BOLD),
+            ),
+            Line::styled(
+                "The selected kernel log source is clear.",
+                Style::default().fg(MUTED),
+            ),
             Line::from(""),
-            Line::styled("Tip  Run a memory-limited workload, then press R to refresh.", Style::default().fg(ACCENT)),
+            Line::styled(
+                "Tip  Run a memory-limited workload, then press R to refresh.",
+                Style::default().fg(ACCENT),
+            ),
         ];
         f.render_widget(
-            Paragraph::new(message).block(panel("INCIDENT TIMELINE")).wrap(Wrap { trim: true }),
+            Paragraph::new(message)
+                .block(panel("INCIDENT TIMELINE"))
+                .wrap(Wrap { trim: true }),
             area,
         );
         return;
@@ -92,21 +115,43 @@ fn timeline_item(event: &OomEvent) -> ListItem<'static> {
     let color = severity_color(event);
     let timestamp = event.timestamp.as_deref().unwrap_or("unknown time");
     let memory = memory(event.rss_total_kb());
-    let reaped = if event.reaped { "reclaimed" } else { "unconfirmed" };
+    let reaped = if event.reaped {
+        "reclaimed"
+    } else {
+        "unconfirmed"
+    };
     ListItem::new(vec![
         Line::from(vec![
             Span::styled("● ", Style::default().fg(color)),
-            Span::styled(event.victim_name.clone(), Style::default().fg(TEXT).add_modifier(Modifier::BOLD)),
-            Span::styled(format!("  PID {}", event.victim_pid), Style::default().fg(MUTED)),
-            Span::styled(format!("  {memory}"), Style::default().fg(color).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                event.victim_name.clone(),
+                Style::default().fg(TEXT).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("  PID {}", event.victim_pid),
+                Style::default().fg(MUTED),
+            ),
+            Span::styled(
+                format!("  {memory}"),
+                Style::default().fg(color).add_modifier(Modifier::BOLD),
+            ),
         ]),
         Line::from(vec![
             Span::styled("  ", Style::default()),
             Span::styled(timestamp.to_string(), Style::default().fg(MUTED)),
             Span::styled("  ·  ", Style::default().fg(MUTED)),
-            Span::styled(reaped, Style::default().fg(if event.reaped { GOOD } else { WARNING })),
+            Span::styled(
+                reaped,
+                Style::default().fg(if event.reaped { GOOD } else { WARNING }),
+            ),
             Span::styled("  ·  ", Style::default().fg(MUTED)),
-            Span::styled(event.cgroup.clone().unwrap_or_else(|| "host / unspecified cgroup".to_string()), Style::default().fg(MUTED)),
+            Span::styled(
+                event
+                    .cgroup
+                    .clone()
+                    .unwrap_or_else(|| "host / unspecified cgroup".to_string()),
+                Style::default().fg(MUTED),
+            ),
         ]),
     ])
 }
@@ -127,7 +172,9 @@ fn draw_detail(f: &mut Frame, area: Rect, app: &App) {
     if app.show_raw {
         f.render_widget(
             Paragraph::new(event.raw_lines.join("\n"))
-                .block(panel("RAW KERNEL EVIDENCE  ·  PgUp/PgDn scroll  ·  l to return"))
+                .block(panel(
+                    "RAW KERNEL EVIDENCE  ·  PgUp/PgDn scroll  ·  l to return",
+                ))
                 .style(Style::default().fg(TEXT))
                 .scroll((raw_scroll, 0))
                 .wrap(Wrap { trim: false }),
@@ -202,18 +249,49 @@ fn truncate(s: &str, max: usize) -> String {
 
 fn draw_identity(f: &mut Frame, area: Rect, event: &OomEvent) {
     let rows = vec![
-        detail_row("VICTIM", format!("{}  (PID {})", event.victim_name, event.victim_pid), TEXT),
-        detail_row("SCOPE", scope_label(event), if event.memcg_kill { CYAN } else { WARNING }),
+        detail_row(
+            "VICTIM",
+            format!("{}  (PID {})", event.victim_name, event.victim_pid),
+            TEXT,
+        ),
+        detail_row(
+            "SCOPE",
+            scope_label(event),
+            if event.memcg_kill { CYAN } else { WARNING },
+        ),
         detail_row("WHEN", when(event), TEXT),
         detail_row("UID", option_u32(event.uid), TEXT),
         detail_row("OOM SCORE ADJ", option_i32(event.oom_score_adj), TEXT),
-        detail_row("CONSTRAINT", event.constraint.clone().unwrap_or_else(|| "—".to_string()), WARNING),
+        detail_row(
+            "CONSTRAINT",
+            event.constraint.clone().unwrap_or_else(|| "—".to_string()),
+            WARNING,
+        ),
         detail_row("WORKLOAD", workload(event), CYAN),
-        detail_row("CGROUP", event.cgroup.clone().unwrap_or_else(|| "—".to_string()), CYAN),
+        detail_row(
+            "CGROUP",
+            event.cgroup.clone().unwrap_or_else(|| "—".to_string()),
+            CYAN,
+        ),
         detail_row("LIMIT HIT", limit_cgroup(event), WARNING),
-        detail_row("TRIGGER", event.trigger_process.clone().unwrap_or_else(|| "—".to_string()), TEXT),
+        detail_row(
+            "TRIGGER",
+            event
+                .trigger_process
+                .clone()
+                .unwrap_or_else(|| "—".to_string()),
+            TEXT,
+        ),
         detail_row("ALLOCATION", allocation(event), TEXT),
-        detail_row("REAPER", if event.reaped { "confirmed — memory reclaimed".to_string() } else { "not confirmed in log window".to_string() }, if event.reaped { GOOD } else { WARNING }),
+        detail_row(
+            "REAPER",
+            if event.reaped {
+                "confirmed — memory reclaimed".to_string()
+            } else {
+                "not confirmed in log window".to_string()
+            },
+            if event.reaped { GOOD } else { WARNING },
+        ),
     ];
     f.render_widget(detail_table(rows, "INCIDENT CONTEXT"), area);
 }
@@ -241,8 +319,16 @@ fn draw_memory(f: &mut Frame, area: Rect, event: &OomEvent) {
         detail_row("PAGE TABLES", memory(event.pgtables_kb), TEXT),
         detail_row("TOTAL VIRTUAL", memory(event.total_vm_kb), MUTED),
         detail_row("SHARE OF RAM", share_of_ram(event), total_color),
-        detail_row("MACHINE RAM", memory(event.mem.as_ref().and_then(|m| m.total_ram_kb)), MUTED),
-        detail_row("RAW LINES", format!("{} captured", event.raw_lines.len()), MUTED),
+        detail_row(
+            "MACHINE RAM",
+            memory(event.mem.as_ref().and_then(|m| m.total_ram_kb)),
+            MUTED,
+        ),
+        detail_row(
+            "RAW LINES",
+            format!("{} captured", event.raw_lines.len()),
+            MUTED,
+        ),
     ];
     f.render_widget(detail_table(rows, "MEMORY AUTOPSY"), area);
 }
@@ -263,17 +349,38 @@ fn detail_row(label: &'static str, value: String, color: Color) -> Row<'static> 
 
 fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
     let mut help = vec![
-        Span::styled(" ↑/k ", Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)), Span::styled("navigate   ", Style::default().fg(MUTED)),
-        Span::styled("l ", Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)), Span::styled("raw evidence   ", Style::default().fg(MUTED)),
-        Span::styled("R ", Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)), Span::styled("reload   ", Style::default().fg(MUTED)),
-        Span::styled("q ", Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)), Span::styled("quit", Style::default().fg(MUTED)),
+        Span::styled(
+            " ↑/k ",
+            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("navigate   ", Style::default().fg(MUTED)),
+        Span::styled(
+            "l ",
+            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("raw evidence   ", Style::default().fg(MUTED)),
+        Span::styled(
+            "R ",
+            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("reload   ", Style::default().fg(MUTED)),
+        Span::styled(
+            "q ",
+            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("quit", Style::default().fg(MUTED)),
     ];
     if let Some(status) = &app.status {
         help.push(Span::styled("   │   ", Style::default().fg(MUTED)));
-        help.push(Span::styled(status.clone(), Style::default().fg(WARNING).add_modifier(Modifier::BOLD)));
+        help.push(Span::styled(
+            status.clone(),
+            Style::default().fg(WARNING).add_modifier(Modifier::BOLD),
+        ));
     }
     f.render_widget(
-        Paragraph::new(Line::from(help)).style(Style::default().bg(PANEL)).alignment(Alignment::Center),
+        Paragraph::new(Line::from(help))
+            .style(Style::default().bg(PANEL))
+            .alignment(Alignment::Center),
         area,
     );
 }
@@ -328,8 +435,16 @@ fn memory(kb: Option<u64>) -> String {
         .unwrap_or_else(|| "—".to_string())
 }
 
-fn option_u32(value: Option<u32>) -> String { value.map(|v| v.to_string()).unwrap_or_else(|| "—".to_string()) }
-fn option_i32(value: Option<i32>) -> String { value.map(|v| v.to_string()).unwrap_or_else(|| "—".to_string()) }
+fn option_u32(value: Option<u32>) -> String {
+    value
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "—".to_string())
+}
+fn option_i32(value: Option<i32>) -> String {
+    value
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "—".to_string())
+}
 
 fn allocation(event: &OomEvent) -> String {
     match (&event.gfp_mask, event.order) {

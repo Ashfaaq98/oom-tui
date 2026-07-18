@@ -33,7 +33,11 @@ pub fn local_boot_time() -> Option<DateTime<Local>> {
 /// `boot_time` should be `None` whenever the log did not come from this
 /// machine's current boot; uptime-based stamps are then left unresolved rather
 /// than being anchored to the wrong epoch.
-pub fn resolve_all(events: &mut [OomEvent], boot_time: Option<DateTime<Local>>, now: DateTime<Local>) {
+pub fn resolve_all(
+    events: &mut [OomEvent],
+    boot_time: Option<DateTime<Local>>,
+    now: DateTime<Local>,
+) {
     for event in events.iter_mut() {
         event.occurred_at = event
             .timestamp
@@ -62,10 +66,9 @@ fn resolve(
 
     // Syslog style: no year at all, so infer one.
     for format in ["%b %e %H:%M:%S", "%b %d %H:%M:%S"] {
-        if let Ok(parsed) = NaiveDateTime::parse_from_str(
-            &format!("{raw} {}", now.year()),
-            &format!("{format} %Y"),
-        ) {
+        if let Ok(parsed) =
+            NaiveDateTime::parse_from_str(&format!("{raw} {}", now.year()), &format!("{format} %Y"))
+        {
             let candidate = Local.from_local_datetime(&parsed).single()?;
             // A "future" syslog date really means it is from last year - the
             // classic New Year's Eve log-reading bug.
@@ -105,12 +108,7 @@ mod tests {
 
     #[test]
     fn dmesg_human_format_is_parsed() {
-        let resolved = resolve(
-            "Sat Jul 18 09:03:34 2026",
-            None,
-            at(2026, 7, 18, 10, 0),
-        )
-        .unwrap();
+        let resolved = resolve("Sat Jul 18 09:03:34 2026", None, at(2026, 7, 18, 10, 0)).unwrap();
         assert_eq!(resolved.year(), 2026);
         assert_eq!(resolved.month(), 7);
         assert_eq!(resolved.day(), 18);
