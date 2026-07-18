@@ -1,4 +1,5 @@
 use crate::model::OomEvent;
+use crate::source::SourceOptions;
 use ratatui::widgets::ListState;
 
 pub struct App {
@@ -7,10 +8,20 @@ pub struct App {
     pub source_description: String,
     pub show_raw: bool,
     pub status: Option<String>,
+    /// Kept so `R` can re-query the exact same source, including a `--file`
+    /// path or a `--boot`/`--since` window.
+    pub source_options: SourceOptions,
+    /// Set when the log source could not honour the requested filters.
+    pub warning: Option<String>,
 }
 
 impl App {
-    pub fn new(events: Vec<OomEvent>, source_description: String) -> Self {
+    pub fn new(
+        events: Vec<OomEvent>,
+        source_description: String,
+        source_options: SourceOptions,
+        warning: Option<String>,
+    ) -> Self {
         let mut list_state = ListState::default();
         if !events.is_empty() {
             list_state.select(Some(events.len() - 1)); // most recent by default
@@ -21,6 +32,8 @@ impl App {
             source_description,
             show_raw: false,
             status: None,
+            source_options,
+            warning,
         }
     }
 
