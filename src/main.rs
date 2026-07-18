@@ -1,14 +1,6 @@
-mod app;
-mod container;
-mod model;
-mod parser;
-mod report;
-mod source;
-mod timestamp;
-mod ui;
-
 use anyhow::Result;
-use app::App;
+use oom_tui::app::App;
+use oom_tui::{parser, report, source, timestamp, ui};
 use clap::Parser as ClapParser;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
@@ -16,8 +8,8 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
-use report::OutputFormat;
-use source::{BootScope, SourceOptions};
+use oom_tui::report::OutputFormat;
+use oom_tui::source::{BootScope, SourceOptions};
 use std::io::{self, IsTerminal, Write};
 use std::process::ExitCode;
 use std::time::Duration;

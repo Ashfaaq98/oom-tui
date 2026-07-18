@@ -519,3 +519,59 @@ mod tests {
         assert!(events.is_empty());
     }
 }
+
+#[cfg(test)]
+mod robustness {
+    use super::*;
+
+    /// The parser is fed logs from machines nobody controls, mid-incident.
+    /// A panic there is a crash at the worst possible time, so hostile and
+    /// malformed input must degrade rather than abort. `cargo fuzz run
+    /// parse_log` explores this space far more widely; these are the cases
+    /// worth pinning permanently.
+    #[test]
+    fn survives_hostile_and_malformed_input() {
+        let nasty = [
+            "",
+            "\0\0\0",
+            "[",
+            "[]",
+            "[ 1.0]",
+            "Out of memory:",
+            "Out of memory: Killed process",
+            // Numbers far beyond what the fields can hold.
+            "Out of memory: Killed process 99999999999999999999 (x) total-vm:99999999999999999999kB, anon-rss:1kB, file-rss:1kB, shmem-rss:1kB, UID:0 oom_score_adj:0",
+            // Multi-byte characters at a slicing boundary.
+            "[ 1.0] Out of memory: Killed process 1 (日本語プロセス) total-vm:1kB, anon-rss:1kB, file-rss:1kB, shmem-rss:1kB, UID:0 oom_score_adj:0",
+            // A process table row with too few columns to be real.
+            "[ 1.0] [   123] 0 1",
+            // Enormous page counts that would overflow a naive multiply.
+            "[ 1.0] [   123] 0 123 18446744073709551615 18446744073709551615 0 0 0 x",
+            "[ 1.0] 18446744073709551615 pages RAM",
+            "Total swap = kB",
+            // A trigger with no kill line ever arriving.
+            "[ 1.0] x invoked oom-killer: gfp_mask=0x0, order=0",
+        ];
+
+        for input in nasty {
+            let events = parse_log(input);
+            for event in &events {
+                let _ = event.rss_total_kb();
+                let _ = event.rss_share_of_ram();
+                let _ = event.victim_was_largest();
+                let _ = event.top_consumers(4);
+            }
+        }
+    }
+
+    #[test]
+    fn does_not_grow_without_bound_on_a_log_that_never_closes_an_event() {
+        // A trigger line followed by endless unrelated noise and no kill line:
+        // the classic truncated ring buffer. Raw context must stay bounded.
+        let mut log = String::from("[ 1.0] x invoked oom-killer: gfp_mask=0x0, order=0\n");
+        for i in 0..20_000 {
+            log.push_str(&format!("[ 1.{i}] unrelated kernel chatter {i}\n"));
+        }
+        assert!(parse_log(&log).is_empty());
+    }
+}

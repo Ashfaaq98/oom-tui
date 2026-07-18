@@ -1,0 +1,54 @@
+name: Misparsed or missing OOM event
+description: oom-tui got it wrong, or showed nothing when a kill did happen
+title: "[parse] "
+labels: [parser, needs-fixture]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you — this is the most useful kind of issue for this project.
+        The kernel's OOM output varies by version, distribution and container
+        runtime, and the only real defence is a corpus of real logs. Yours
+        becomes a permanent test fixture.
+
+        **Please redact** hostnames, usernames and anything sensitive in
+        process names before pasting. Feel free to replace them with
+        placeholders; the structure is what matters, not the contents.
+  - type: textarea
+    id: raw-log
+    attributes:
+      label: The raw kernel lines
+      description: >
+        From the "invoked oom-killer" line through the "Killed process" line,
+        including the task table if present. `journalctl -k` or `dmesg -T`.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: kernel
+    attributes:
+      label: Kernel version
+      description: Output of `uname -r`
+      placeholder: 6.1.0-18-amd64
+    validations:
+      required: true
+  - type: input
+    id: distro
+    attributes:
+      label: Distribution
+      placeholder: Debian 12 / Amazon Linux 2023 / Talos 1.7
+  - type: dropdown
+    id: workload
+    attributes:
+      label: Where was this running?
+      options:
+        - Bare metal or VM (no containers)
+        - Docker
+        - Kubernetes
+        - Podman
+        - Other / not sure
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect, and what did you get?
+      placeholder: "Expected 1 event for `postgres`; oom-tui showed none."

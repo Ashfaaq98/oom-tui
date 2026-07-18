@@ -1,0 +1,32 @@
+name: Fuzz
+
+# Fuzzing is slow and needs nightly, so it runs on a schedule rather than on
+# every push. The deterministic cases live in `parser::robustness` and run in
+# normal CI; this is the wider exploration.
+on:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      duration_seconds:
+        description: How long to fuzz
+        default: "300"
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-fuzz --locked
+      - name: Fuzz parse_log
+        run: |
+          cargo fuzz run parse_log -- \
+            -max_total_time=${{ github.event.inputs.duration_seconds || 300 }}
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts
+          path: fuzz/artifacts/

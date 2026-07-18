@@ -41,6 +41,16 @@ reassembles them into one browsable incident.
   workloads. Did this process blow through *its own cgroup limit*, or did the
   *whole machine* run out? Those have completely different fixes: raise the
   limit / fix the leak, versus stop oversubscribing the node.
+- **Who else was holding memory.** The kernel dumps every running task when it
+  fires. `oom-tui` parses that table and ranks it, which regularly shows that
+  the process the kernel killed was *not* the one that actually leaked — the
+  OOM killer targets the largest resident set, not the culprit.
+- **Workload identity, decoded.** Kubernetes and Docker cgroup paths become
+  pod UIDs, container IDs, QoS class and systemd units. No cluster access
+  needed: the identity is already in the path.
+- **Real timestamps.** Kernel uptime, `dmesg -T` and syslog formats all resolve
+  to wall-clock time with a relative hint, so "was this five minutes or three
+  months ago" is answerable at a glance.
 - **The raw lines, always one keypress away.** Press `l` to drop to the
   original kernel output for the selected event. A parser you can't check isn't
   one you should trust.
@@ -64,7 +74,28 @@ cargo build --release   # binary at target/release/oom-tui
 ```bash
 oom-tui                              # live: journalctl -k, falling back to dmesg
 oom-tui --file /path/to/kernel.log   # analyse a log copied off another machine
+journalctl -k | oom-tui --file -     # read from a pipe
 ```
+
+Find the kill that caused a reboot, or narrow to a time window:
+
+```bash
+oom-tui --boot -1                    # the previous boot
+oom-tui --all-boots                  # everything the journal still holds
+oom-tui --since "2 days ago"
+```
+
+Use it from a script or a CI check:
+
+```bash
+oom-tui --format json | jq '.[] | select(.victim_was_largest == false)'
+oom-tui --format jsonl >> incidents.jsonl
+oom-tui --exit-code                  # status 1 if any OOM kill was found
+```
+
+Output defaults to the dashboard on a terminal and a plain table when piped, so
+`oom-tui | grep postgres` does the obvious thing. Force it with
+`--format tui|table|json|jsonl`.
 
 | Key | Action |
 | --- | --- |
@@ -118,28 +149,26 @@ oom-tui
 
 Being upfront about what it does **not** do yet:
 
-- Only reads the **current boot** via `journalctl -k` (which implies `-b`), so
-  an OOM kill that *caused* a reboot won't show up. Export the log and use
-  `--file` as a workaround.
-- Does not yet parse the kernel's **full process table dump** or the `Mem-Info`
-  block, so it tells you who died but not yet who else was hogging memory. (The
-  OOM killer targets the largest RSS, which is frequently *not* the process
-  that actually leaked.)
-- Timestamps are shown exactly as the log records them and are not normalised
-  across sources, so events can't yet be sorted or filtered by time.
-- No JSON output or stdin support yet.
-- The raw-log pane doesn't scroll, so very long events are cut off on screen.
+- No search or filtering inside the TUI, and no grouping by victim — if a
+  process died fourteen times you get fourteen rows. Use `--format json` and
+  `jq` for now.
+- Kernel uptime stamps (`+767.9s`) are only resolved to wall-clock time for
+  logs from the running machine's current boot. For a log copied off another
+  host the raw value is shown rather than a confidently wrong date.
+- Page size is assumed to be 4 KiB when converting the task table, which is
+  wrong on architectures configured with 16K/64K pages.
+- Not yet published to crates.io, so `cargo install oom-tui` doesn't work yet —
+  build from source or grab a release binary.
 
 ## Contributing
 
 **The most valuable contribution is a weird `dmesg`.** This is a parser for
 unstructured kernel output whose shape has changed across kernel versions,
 distributions, and container runtimes. If `oom-tui` misparses or misses an
-event on your system, please open an issue with the raw lines (redact hostnames
-and process names as needed) — those become test fixtures, which is the only
-real defence against format drift.
+event on your system, please open an issue with the raw lines — those become
+test fixtures, which is the only real defence against format drift.
 
-Bug reports, kernel-version reports, and PRs all welcome.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Non-goals
 
