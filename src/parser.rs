@@ -292,10 +292,9 @@ pub fn parse_log(text: &str) -> Vec<OomEvent> {
         // bound has to clear that comfortably or "show me the raw log" silently
         // loses the end of the event. It exists only to stop unbounded growth
         // when a log has no kill line to close the event.
-        if pending_trigger.is_some() || pending_constraint.is_some() {
-            if pending_raw.len() < 5000 {
-                pending_raw.push(raw_line.to_string());
-            }
+        let collecting = pending_trigger.is_some() || pending_constraint.is_some();
+        if collecting && pending_raw.len() < 5000 {
+            pending_raw.push(raw_line.to_string());
         }
     }
 

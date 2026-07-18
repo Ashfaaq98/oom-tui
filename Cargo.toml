@@ -11,7 +11,7 @@ repository = "https://github.com/Ashfaaq98/oom-tui"
 homepage = "https://github.com/Ashfaaq98/oom-tui"
 keywords = ["oom", "linux", "kernel", "tui", "sre"]
 categories = ["command-line-utilities", "development-tools::debugging"]
-exclude = ["/.github", "/ROADMAP.md"]
+exclude = ["/.github"]
 
 [lib]
 name = "oom_tui"

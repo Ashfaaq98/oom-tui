@@ -110,7 +110,7 @@ impl OomEvent {
     /// Tasks from the process dump, largest resident set first.
     pub fn top_consumers(&self, limit: usize) -> Vec<&ProcessEntry> {
         let mut sorted: Vec<&ProcessEntry> = self.processes.iter().collect();
-        sorted.sort_by(|a, b| b.rss_kb.cmp(&a.rss_kb));
+        sorted.sort_by_key(|p| std::cmp::Reverse(p.rss_kb));
         sorted.truncate(limit);
         sorted
     }

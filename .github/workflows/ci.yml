@@ -20,12 +20,15 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      # Tests run before the linters on purpose. A style lint failing must not
+      # hide whether the code actually works - that is the more important
+      # signal, and a skipped test step tells you nothing.
+      - name: Test
+        run: cargo test --all-features
       - name: Format
         run: cargo fmt --all --check
       - name: Clippy
         run: cargo clippy --all-targets --all-features
-      - name: Test
-        run: cargo test --all-features
 
   # The README advertises a minimum supported Rust version. An unverified MSRV
   # claim is worse than no claim, so it gets its own job.
