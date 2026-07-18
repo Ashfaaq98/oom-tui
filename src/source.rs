@@ -47,6 +47,9 @@ impl SourceOptions {
 pub struct LogSource {
     pub description: String,
     pub text: String,
+    /// True when this text came from the running machine's current boot, which
+    /// is the only case where kernel uptime stamps can be anchored to wall time.
+    pub is_live_local: bool,
     /// Set when we had to fall back to a source that cannot honour the
     /// requested boot/time range, so the UI can say so rather than quietly
     /// showing the wrong window of history.
@@ -65,6 +68,7 @@ pub fn load(opts: &SourceOptions) -> Result<LogSource> {
         return Ok(LogSource {
             description: describe_journal(opts),
             text,
+            is_live_local: opts.boot == BootScope::Current,
             warning: None,
         });
     }
@@ -87,6 +91,7 @@ pub fn load(opts: &SourceOptions) -> Result<LogSource> {
             return Ok(LogSource {
                 description: desc.to_string(),
                 text,
+                is_live_local: true,
                 warning,
             });
         }
@@ -98,6 +103,7 @@ pub fn load(opts: &SourceOptions) -> Result<LogSource> {
                 return Ok(LogSource {
                     description: format!("file: {candidate}"),
                     text,
+                    is_live_local: false,
                     warning,
                 });
             }
@@ -121,6 +127,7 @@ fn load_file(path: &str) -> Result<LogSource> {
         return Ok(LogSource {
             description: "stdin".to_string(),
             text,
+            is_live_local: false,
             warning: None,
         });
     }
@@ -130,6 +137,7 @@ fn load_file(path: &str) -> Result<LogSource> {
     Ok(LogSource {
         description: format!("file: {path}"),
         text,
+        is_live_local: false,
         warning: None,
     })
 }

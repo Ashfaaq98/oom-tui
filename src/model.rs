@@ -40,6 +40,12 @@ pub struct OomEvent {
     /// formats aren't directly comparable without extra context (boot time).
     pub timestamp: Option<String>,
 
+    /// The timestamp resolved to real wall-clock time, when that could be done
+    /// safely. `None` for an uptime-based stamp from a log this machine did not
+    /// produce, where anchoring it to the local boot time would be a confident
+    /// lie rather than a missing value.
+    pub occurred_at: Option<chrono::DateTime<chrono::Local>>,
+
     // --- who triggered the allocation that failed ---
     pub trigger_process: Option<String>,
     pub gfp_mask: Option<String>,

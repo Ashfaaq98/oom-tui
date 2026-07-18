@@ -257,6 +257,9 @@ pub fn parse_log(text: &str) -> Vec<OomEvent> {
 
             let event = OomEvent {
                 timestamp: ts,
+                // Filled in later by `timestamp::resolve_all`, which knows
+                // whether this log's boot epoch can be trusted.
+                occurred_at: None,
                 trigger_process,
                 gfp_mask,
                 order,

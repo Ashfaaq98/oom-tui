@@ -26,6 +26,8 @@ pub enum OutputFormat {
 #[derive(Serialize)]
 struct EventJson<'a> {
     timestamp: Option<&'a str>,
+    /// RFC 3339 wall-clock time, when the log's epoch could be trusted.
+    occurred_at: Option<String>,
     victim_name: &'a str,
     victim_pid: u32,
     uid: Option<u32>,
@@ -111,6 +113,7 @@ impl<'a> From<&'a OomEvent> for EventJson<'a> {
     fn from(e: &'a OomEvent) -> Self {
         EventJson {
             timestamp: e.timestamp.as_deref(),
+            occurred_at: e.occurred_at.map(|t| t.to_rfc3339()),
             victim_name: &e.victim_name,
             victim_pid: e.victim_pid,
             uid: e.uid,

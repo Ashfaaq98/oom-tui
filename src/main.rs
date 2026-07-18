@@ -4,6 +4,7 @@ mod model;
 mod parser;
 mod report;
 mod source;
+mod timestamp;
 mod ui;
 
 use anyhow::Result;
@@ -92,7 +93,16 @@ fn run() -> Result<ExitCode> {
     let opts = cli.source_options();
 
     let source = source::load(&opts)?;
-    let events = parser::parse_log(&source.text);
+    let mut events = parser::parse_log(&source.text);
+
+    // Uptime stamps are only datable against the boot they came from, so the
+    // anchor is withheld for logs this machine did not just produce.
+    let boot_time = if source.is_live_local {
+        timestamp::local_boot_time()
+    } else {
+        None
+    };
+    timestamp::resolve_all(&mut events, boot_time, chrono::Local::now());
 
     let found = !events.is_empty();
     let format = resolve_format(cli.format);

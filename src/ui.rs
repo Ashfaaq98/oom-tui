@@ -202,7 +202,7 @@ fn draw_identity(f: &mut Frame, area: Rect, event: &OomEvent) {
     let rows = vec![
         detail_row("VICTIM", format!("{}  (PID {})", event.victim_name, event.victim_pid), TEXT),
         detail_row("SCOPE", scope_label(event), if event.memcg_kill { CYAN } else { WARNING }),
-        detail_row("TIMESTAMP", event.timestamp.clone().unwrap_or_else(|| "—".to_string()), TEXT),
+        detail_row("WHEN", when(event), TEXT),
         detail_row("UID", option_u32(event.uid), TEXT),
         detail_row("OOM SCORE ADJ", option_i32(event.oom_score_adj), TEXT),
         detail_row("CONSTRAINT", event.constraint.clone().unwrap_or_else(|| "—".to_string()), WARNING),
@@ -333,5 +333,29 @@ fn allocation(event: &OomEvent) -> String {
     match (&event.gfp_mask, event.order) {
         (Some(mask), Some(order)) => format!("order {order}  ·  {mask}"),
         _ => "—".to_string(),
+    }
+}
+
+/// Prefer resolved wall-clock time with a relative hint; fall back to the raw
+/// stamp when the log's epoch could not be trusted.
+fn when(event: &OomEvent) -> String {
+    let raw = event.timestamp.as_deref().unwrap_or("—");
+    match event.occurred_at {
+        Some(at) => format!("{}  ({})", at.format("%Y-%m-%d %H:%M:%S"), ago(at)),
+        None => raw.to_string(),
+    }
+}
+
+fn ago(at: chrono::DateTime<chrono::Local>) -> String {
+    let delta = chrono::Local::now() - at;
+    let minutes = delta.num_minutes();
+    if minutes < 1 {
+        "just now".to_string()
+    } else if minutes < 60 {
+        format!("{minutes}m ago")
+    } else if delta.num_hours() < 48 {
+        format!("{}h ago", delta.num_hours())
+    } else {
+        format!("{}d ago", delta.num_days())
     }
 }
