@@ -177,8 +177,12 @@ fn event_loop(
                     KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
                     // While the raw pane is open the vertical keys scroll it
                     // rather than moving between events.
-                    KeyCode::Down | KeyCode::Char('j') if app.show_raw => app.scroll_raw(1),
-                    KeyCode::Up | KeyCode::Char('k') if app.show_raw => app.scroll_raw(-1),
+                    KeyCode::Down | KeyCode::Char('j') if app.show_raw => {
+                        app.scroll_raw(1)
+                    }
+                    KeyCode::Up | KeyCode::Char('k') if app.show_raw => {
+                        app.scroll_raw(-1)
+                    }
                     KeyCode::Down | KeyCode::Char('j') => app.select_next(),
                     KeyCode::Up | KeyCode::Char('k') => app.select_prev(),
                     KeyCode::PageDown => app.scroll_raw(20),
