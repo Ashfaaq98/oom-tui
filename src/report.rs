@@ -32,6 +32,10 @@ struct EventJson<'a> {
     /// "cgroup" when a container/cgroup limit was hit, "host" for global exhaustion.
     scope: &'static str,
     cgroup: Option<&'a str>,
+    /// The cgroup whose limit was breached, when it differs from `cgroup`.
+    limit_cgroup: Option<&'a str>,
+    /// Workload identity decoded from the cgroup path: runtime, pod, container.
+    workload: Option<WorkloadJson>,
     constraint: Option<&'a str>,
     trigger_process: Option<&'a str>,
     gfp_mask: Option<&'a str>,
@@ -57,6 +61,27 @@ struct EventJson<'a> {
     victim_was_largest: Option<bool>,
     /// Every task the kernel listed, largest resident set first.
     top_consumers: Vec<ProcessJson<'a>>,
+}
+
+#[derive(Serialize)]
+struct WorkloadJson {
+    runtime: &'static str,
+    container_id: Option<String>,
+    pod_uid: Option<String>,
+    qos_class: Option<String>,
+    unit: Option<String>,
+}
+
+impl From<crate::container::Identity> for WorkloadJson {
+    fn from(id: crate::container::Identity) -> Self {
+        WorkloadJson {
+            runtime: id.runtime.label(),
+            container_id: id.container_id,
+            pod_uid: id.pod_uid,
+            qos_class: id.qos_class,
+            unit: id.unit,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -91,6 +116,12 @@ impl<'a> From<&'a OomEvent> for EventJson<'a> {
             uid: e.uid,
             scope: if e.memcg_kill { "cgroup" } else { "host" },
             cgroup: e.cgroup.as_deref(),
+            limit_cgroup: e.limit_cgroup.as_deref(),
+            workload: e
+                .cgroup
+                .as_deref()
+                .and_then(crate::container::identify)
+                .map(WorkloadJson::from),
             constraint: e.constraint.as_deref(),
             trigger_process: e.trigger_process.as_deref(),
             gfp_mask: e.gfp_mask.as_deref(),

@@ -57,8 +57,11 @@ fn regexes() -> &'static Regexes {
             r"^(?P<proc>.+?)\s+invoked oom-killer:\s*gfp_mask=(?P<gfp>\S+),\s*order=(?P<order>\d+)",
         )
         .unwrap(),
+        // `oom_memcg` is the cgroup whose *limit* was breached; `task_memcg` is
+        // merely where the victim lived. They differ when a parent slice's limit
+        // kills a child, which is exactly when the distinction matters.
         constraint: Regex::new(
-            r"^oom-kill:constraint=(?P<constraint>\S+?),.*?task_memcg=(?P<memcg>\S+?),task=(?P<task>.+?),pid=(?P<pid>\d+),uid=(?P<uid>\d+)",
+            r"^oom-kill:constraint=(?P<constraint>\S+?),.*?(?:oom_memcg=(?P<oom_memcg>[^,]+),)?task_memcg=(?P<memcg>[^,]+),task=(?P<task>.+?),pid=(?P<pid>\d+),uid=(?P<uid>\d+)",
         )
         .unwrap(),
         // The kernel picks this message prefix per code path, so anchoring on a
@@ -153,6 +156,7 @@ pub fn parse_log(text: &str) -> Vec<OomEvent> {
     // the next "Killed process" line consumes it.
     let mut pending_trigger: Option<(String, String, u32)> = None; // proc, gfp, order
     let mut pending_constraint: Option<(String, String)> = None; // constraint, cgroup
+    let mut pending_limit_cgroup: Option<String> = None; // oom_memcg, when present
     let mut pending_raw: Vec<String> = Vec::new();
     let mut pending_processes: Vec<ProcessEntry> = Vec::new();
     let mut pending_mem = MemInfo::default();
@@ -179,6 +183,7 @@ pub fn parse_log(text: &str) -> Vec<OomEvent> {
                 caps.name("constraint").unwrap().as_str().to_string(),
                 caps.name("memcg").unwrap().as_str().to_string(),
             ));
+            pending_limit_cgroup = caps.name("oom_memcg").map(|m| m.as_str().to_string());
             pending_raw.push(raw_line.to_string());
             continue;
         }
@@ -257,6 +262,7 @@ pub fn parse_log(text: &str) -> Vec<OomEvent> {
                 order,
                 constraint,
                 cgroup,
+                limit_cgroup: pending_limit_cgroup.take(),
                 memcg_kill,
                 victim_name: name,
                 victim_pid: pid,

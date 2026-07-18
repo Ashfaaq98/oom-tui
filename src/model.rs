@@ -49,6 +49,11 @@ pub struct OomEvent {
     pub constraint: Option<String>,
     pub cgroup: Option<String>,
 
+    /// The cgroup whose *limit* was breached (`oom_memcg`), which is not
+    /// always the cgroup the victim lived in. When a parent slice's limit
+    /// kills a child, this is the one to go and raise.
+    pub limit_cgroup: Option<String>,
+
     /// True when the kill satisfied a *cgroup memory limit* rather than
     /// global host exhaustion. This is the first thing worth knowing about
     /// any containerised kill: hitting your own limit means "raise the limit

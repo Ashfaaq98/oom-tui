@@ -206,7 +206,9 @@ fn draw_identity(f: &mut Frame, area: Rect, event: &OomEvent) {
         detail_row("UID", option_u32(event.uid), TEXT),
         detail_row("OOM SCORE ADJ", option_i32(event.oom_score_adj), TEXT),
         detail_row("CONSTRAINT", event.constraint.clone().unwrap_or_else(|| "—".to_string()), WARNING),
+        detail_row("WORKLOAD", workload(event), CYAN),
         detail_row("CGROUP", event.cgroup.clone().unwrap_or_else(|| "—".to_string()), CYAN),
+        detail_row("LIMIT HIT", limit_cgroup(event), WARNING),
         detail_row("TRIGGER", event.trigger_process.clone().unwrap_or_else(|| "—".to_string()), TEXT),
         detail_row("ALLOCATION", allocation(event), TEXT),
         detail_row("REAPER", if event.reaped { "confirmed — memory reclaimed".to_string() } else { "not confirmed in log window".to_string() }, if event.reaped { GOOD } else { WARNING }),
@@ -289,6 +291,26 @@ fn severity_color(event: &OomEvent) -> Color {
         Some(kb) if kb > 2_000_000 => CRITICAL,
         Some(kb) if kb > 500_000 => WARNING,
         _ => GOOD,
+    }
+}
+
+/// Human-readable workload identity decoded from the cgroup path.
+fn workload(event: &OomEvent) -> String {
+    event
+        .cgroup
+        .as_deref()
+        .and_then(crate::container::identify)
+        .map(|id| id.summary())
+        .unwrap_or_else(|| "—".to_string())
+}
+
+/// Which cgroup's limit was actually breached. Only interesting when it differs
+/// from where the task lived, which is the parent-slice case.
+fn limit_cgroup(event: &OomEvent) -> String {
+    match (&event.limit_cgroup, &event.cgroup) {
+        (Some(limit), Some(task)) if limit == task => "own cgroup limit".to_string(),
+        (Some(limit), _) => format!("parent: {limit}"),
+        (None, _) => "—".to_string(),
     }
 }
 
