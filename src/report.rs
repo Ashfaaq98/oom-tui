@@ -45,6 +45,41 @@ struct EventJson<'a> {
     /// anon + file + shmem, precomputed so consumers don't have to.
     rss_total_kb: Option<u64>,
     reaped: bool,
+
+    // --- system state at the moment of the kill ---
+    total_ram_kb: Option<u64>,
+    swap_total_kb: Option<u64>,
+    /// The victim's RSS as a percentage of total RAM. Far more meaningful than
+    /// the absolute figure, which says nothing without knowing the machine.
+    rss_percent_of_ram: Option<f64>,
+    /// False means the kernel killed something that was *not* the biggest
+    /// memory user, so the process to investigate is in `top_consumers`.
+    victim_was_largest: Option<bool>,
+    /// Every task the kernel listed, largest resident set first.
+    top_consumers: Vec<ProcessJson<'a>>,
+}
+
+#[derive(Serialize)]
+struct ProcessJson<'a> {
+    pid: u32,
+    uid: u32,
+    name: &'a str,
+    rss_kb: u64,
+    total_vm_kb: u64,
+    oom_score_adj: i32,
+}
+
+impl<'a> From<&'a crate::model::ProcessEntry> for ProcessJson<'a> {
+    fn from(p: &'a crate::model::ProcessEntry) -> Self {
+        ProcessJson {
+            pid: p.pid,
+            uid: p.uid,
+            name: &p.name,
+            rss_kb: p.rss_kb,
+            total_vm_kb: p.total_vm_kb,
+            oom_score_adj: p.oom_score_adj,
+        }
+    }
 }
 
 impl<'a> From<&'a OomEvent> for EventJson<'a> {
@@ -68,6 +103,15 @@ impl<'a> From<&'a OomEvent> for EventJson<'a> {
             pgtables_kb: e.pgtables_kb,
             rss_total_kb: e.rss_total_kb(),
             reaped: e.reaped,
+            total_ram_kb: e.mem.as_ref().and_then(|m| m.total_ram_kb),
+            swap_total_kb: e.mem.as_ref().and_then(|m| m.swap_total_kb),
+            rss_percent_of_ram: e.rss_share_of_ram().map(|p| (p * 10.0).round() / 10.0),
+            victim_was_largest: e.victim_was_largest(),
+            top_consumers: e
+                .top_consumers(usize::MAX)
+                .into_iter()
+                .map(ProcessJson::from)
+                .collect(),
         }
     }
 }

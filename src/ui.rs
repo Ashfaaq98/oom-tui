@@ -134,12 +134,68 @@ fn draw_detail(f: &mut Frame, area: Rect, app: &App) {
         return;
     }
 
+    // The task dump only exists on some logs, so it earns a column only when
+    // there is something to put in it.
+    let constraints = if event.processes.is_empty() {
+        vec![Constraint::Percentage(50), Constraint::Percentage(50)]
+    } else {
+        vec![
+            Constraint::Percentage(36),
+            Constraint::Percentage(28),
+            Constraint::Percentage(36),
+        ]
+    };
     let columns = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .constraints(constraints)
         .split(area);
+
     draw_identity(f, columns[0], event);
     draw_memory(f, columns[1], event);
+    if !event.processes.is_empty() {
+        draw_top_consumers(f, columns[2], event);
+    }
+}
+
+/// Who else was holding memory when the kernel fired.
+///
+/// The OOM killer targets the largest resident set, which is regularly not the
+/// process responsible for the pressure, so the victim being absent from the
+/// top of this list is the single most useful signal in the whole tool.
+fn draw_top_consumers(f: &mut Frame, area: Rect, event: &OomEvent) {
+    let visible = area.height.saturating_sub(2) as usize;
+    let mut rows: Vec<Row<'static>> = Vec::new();
+
+    for process in event.top_consumers(visible.min(20)) {
+        let is_victim = process.pid == event.victim_pid;
+        let color = if is_victim { CRITICAL } else { TEXT };
+        let marker = if is_victim { "▶ " } else { "  " };
+        rows.push(Row::new(vec![
+            Cell::from(format!("{marker}{}", truncate(&process.name, 16)))
+                .style(Style::default().fg(color)),
+            Cell::from(format!("{:.0} MiB", process.rss_kb as f64 / 1024.0))
+                .style(Style::default().fg(color)),
+        ]));
+    }
+
+    let title = match event.victim_was_largest() {
+        Some(false) => "TOP CONSUMERS  ·  victim was NOT the largest",
+        _ => "TOP CONSUMERS",
+    };
+
+    let table = Table::new(rows, [Constraint::Min(10), Constraint::Length(10)])
+        .block(panel(title))
+        .column_spacing(1)
+        .style(Style::default().fg(TEXT).bg(SURFACE));
+    f.render_widget(table, area);
+}
+
+fn truncate(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        s.chars().take(max.saturating_sub(1)).collect::<String>() + "…"
+    }
 }
 
 fn draw_identity(f: &mut Frame, area: Rect, event: &OomEvent) {
@@ -180,6 +236,8 @@ fn draw_memory(f: &mut Frame, area: Rect, event: &OomEvent) {
         detail_row("SHMEM RSS", memory(event.shmem_rss_kb), TEXT),
         detail_row("PAGE TABLES", memory(event.pgtables_kb), TEXT),
         detail_row("TOTAL VIRTUAL", memory(event.total_vm_kb), MUTED),
+        detail_row("SHARE OF RAM", share_of_ram(event), total_color),
+        detail_row("MACHINE RAM", memory(event.mem.as_ref().and_then(|m| m.total_ram_kb)), MUTED),
         detail_row("RAW LINES", format!("{} captured", event.raw_lines.len()), MUTED),
     ];
     f.render_widget(detail_table(rows, "MEMORY AUTOPSY"), area);
@@ -216,12 +274,29 @@ fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
     );
 }
 
+/// Prefer share-of-RAM when the log told us how much RAM the machine had.
+/// Absolute thresholds are misleading on their own: 400 MB is noise on a 64 GB
+/// host and fatal on a 512 MB VM.
 fn severity_color(event: &OomEvent) -> Color {
+    if let Some(percent) = event.rss_share_of_ram() {
+        return match percent {
+            p if p >= 50.0 => CRITICAL,
+            p if p >= 20.0 => WARNING,
+            _ => GOOD,
+        };
+    }
     match event.rss_total_kb() {
         Some(kb) if kb > 2_000_000 => CRITICAL,
         Some(kb) if kb > 500_000 => WARNING,
         _ => GOOD,
     }
+}
+
+fn share_of_ram(event: &OomEvent) -> String {
+    event
+        .rss_share_of_ram()
+        .map(|percent| format!("{percent:.1}% of system memory"))
+        .unwrap_or_else(|| "— (no Mem-Info in log)".to_string())
 }
 
 fn memory(kb: Option<u64>) -> String {
