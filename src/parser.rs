@@ -21,6 +21,7 @@ use std::sync::OnceLock;
 
 struct Regexes {
     dmesg_prefix: Regex,
+    dmesg_human_prefix: Regex,
     syslog_prefix: Regex,
     trigger: Regex,
     constraint: Regex,
@@ -33,6 +34,8 @@ fn regexes() -> &'static Regexes {
     CELL.get_or_init(|| Regexes {
         // `[  767.925606] rest...`  (raw dmesg / kernel uptime)
         dmesg_prefix: Regex::new(r"^\[\s*(?P<uptime>[0-9]+\.[0-9]+)\]\s*(?P<rest>.*)$").unwrap(),
+        // `[Sat Jul 18 09:03:34 2026] rest...` (`dmesg -T`)
+        dmesg_human_prefix: Regex::new(r"^\[(?P<ts>[^\]]+)\]\s*(?P<rest>.*)$").unwrap(),
         // `Mar 24 18:41:04 host kernel: rest...` (syslog / journalctl -o short)
         syslog_prefix: Regex::new(
             r"^(?P<ts>\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})\s+\S+\s+(?:kernel:\s*)?(?P<rest>.*)$",
@@ -64,6 +67,11 @@ fn strip_prefix(line: &str) -> (Option<String>, &str) {
         let rest = caps.name("rest").unwrap();
         return (Some(format!("+{uptime}s")), &line[rest.start()..rest.end()]);
     }
+    if let Some(caps) = re.dmesg_human_prefix.captures(line) {
+        let ts = caps.name("ts").unwrap().as_str().to_string();
+        let rest = caps.name("rest").unwrap();
+        return (Some(ts), &line[rest.start()..rest.end()]);
+    }
     if let Some(caps) = re.syslog_prefix.captures(line) {
         let ts = caps.name("ts").unwrap().as_str().to_string();
         let rest = caps.name("rest").unwrap();
@@ -82,7 +90,7 @@ pub fn parse_log(text: &str) -> Vec<OomEvent> {
 
     // "pending" state carried forward from trigger/constraint lines until
     // the next "Killed process" line consumes it.
-    let mut pending_trigger: Option<(String, Option<u32>, String, u32)> = None; // proc, pid(unused), gfp, order
+    let mut pending_trigger: Option<(String, String, u32)> = None; // proc, gfp, order
     let mut pending_constraint: Option<(String, String)> = None; // constraint, cgroup
     let mut pending_raw: Vec<String> = Vec::new();
 
@@ -96,7 +104,6 @@ pub fn parse_log(text: &str) -> Vec<OomEvent> {
         if let Some(caps) = re.trigger.captures(body) {
             pending_trigger = Some((
                 caps.name("proc").unwrap().as_str().trim().to_string(),
-                None,
                 caps.name("gfp").unwrap().as_str().to_string(),
                 caps.name("order").unwrap().as_str().parse().unwrap_or(0),
             ));
@@ -141,7 +148,7 @@ pub fn parse_log(text: &str) -> Vec<OomEvent> {
             }
 
             let (trigger_process, gfp_mask, order) = match pending_trigger.take() {
-                Some((p, _, g, o)) => (Some(p), Some(g), Some(o)),
+                Some((p, g, o)) => (Some(p), Some(g), Some(o)),
                 None => (None, None, None),
             };
             let (constraint, cgroup) = match pending_constraint.take() {
@@ -152,7 +159,6 @@ pub fn parse_log(text: &str) -> Vec<OomEvent> {
             let event = OomEvent {
                 timestamp: ts,
                 trigger_process,
-                trigger_pid: None,
                 gfp_mask,
                 order,
                 constraint,
@@ -199,6 +205,8 @@ mod tests {
 
     const SYSLOG_SAMPLE: &str = "Mar 24 18:41:04 PLEDXDBOR0G kernel: Out of memory: Killed process 2475067 (postgres) total-vm:2484556kB, anon-rss:143224kB, file-rss:0kB, shmem-rss:452kB, UID:1011 pgtables:588kB oom_score_adj:900";
 
+    const DMESG_HUMAN_SAMPLE: &str = "[Sat Jul 18 09:03:34 2026] Out of memory: Killed process 99 (worker) total-vm:1024kB, anon-rss:512kB, file-rss:0kB, shmem-rss:0kB, UID:1000 pgtables:16kB oom_score_adj:0";
+
     #[test]
     fn parses_full_dmesg_sequence() {
         let events = parse_log(SAMPLE);
@@ -229,6 +237,14 @@ mod tests {
         assert_eq!(e.oom_score_adj, Some(900));
         assert!(e.trigger_process.is_none());
         assert!(!e.reaped);
+    }
+
+    #[test]
+    fn parses_human_readable_dmesg_timestamp() {
+        let events = parse_log(DMESG_HUMAN_SAMPLE);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].timestamp.as_deref(), Some("Sat Jul 18 09:03:34 2026"));
+        assert_eq!(events[0].victim_name, "worker");
     }
 
     #[test]

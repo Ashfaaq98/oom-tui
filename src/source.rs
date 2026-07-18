@@ -23,7 +23,9 @@ pub fn load(explicit_file: Option<&str>) -> Result<LogSource> {
         });
     }
 
-    if let Some(text) = run_ok("journalctl", &["-k", "-o", "short-iso", "--no-pager"]) {
+    // `short` uses the traditional syslog-style timestamp understood by the
+    // parser. `short-iso` would need a separate timestamp format.
+    if let Some(text) = run_ok("journalctl", &["-k", "-o", "short", "--no-pager"]) {
         return Ok(LogSource {
             description: "journalctl -k".to_string(),
             text,

@@ -91,7 +91,7 @@ fn reload(app: &mut App) -> Result<()> {
     // need the original path; for the common case (journalctl/dmesg) we
     // just re-invoke `source::load(None)`. Keep it simple and safe.
     if app.source_description.starts_with("file:") {
-        app.status = Some("reload not supported for file sources".to_string());
+        app.status = Some("file source: no reload".to_string());
         return Ok(());
     }
     let source = source::load(None)?;
@@ -99,6 +99,7 @@ fn reload(app: &mut App) -> Result<()> {
     let selected_pid = app.selected().map(|e| e.victim_pid);
     app.events = events;
     app.source_description = source.description;
+    app.status = None;
     // try to keep selection on the same pid if it still exists, else jump to newest
     if let Some(pid) = selected_pid {
         if let Some(idx) = app.events.iter().position(|e| e.victim_pid == pid) {

@@ -13,7 +13,6 @@ pub struct OomEvent {
 
     // --- who triggered the allocation that failed ---
     pub trigger_process: Option<String>,
-    pub trigger_pid: Option<u32>,
     pub gfp_mask: Option<String>,
     pub order: Option<u32>,
 

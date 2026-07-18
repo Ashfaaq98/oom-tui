@@ -181,10 +181,13 @@ fn draw_detail(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(p, area);
 }
 
-fn draw_help(f: &mut Frame, area: Rect, _app: &App) {
-    let p = Paragraph::new(
-        " ↑/k up   ↓/j down   l raw log   R reload   q quit",
-    )
+fn draw_help(f: &mut Frame, area: Rect, app: &App) {
+    let mut text = " ↑/k up   ↓/j down   l raw log   R reload   q quit".to_string();
+    if let Some(status) = &app.status {
+        text.push_str("   —   ");
+        text.push_str(status);
+    }
+    let p = Paragraph::new(text)
     .style(Style::default().fg(Color::Black).bg(Color::Gray));
     f.render_widget(p, area);
 }
