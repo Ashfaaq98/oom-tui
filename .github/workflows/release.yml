@@ -54,14 +54,20 @@ jobs:
       - name: Build
         run: cross build --release --locked --target ${{ matrix.target }}
 
+      # The archive name deliberately omits the version so that
+      # /releases/latest/download/oom-tui-<target>.tar.gz is a permanent URL.
+      # Putting the version in the filename breaks that link on every release
+      # and forces a README edit each time. The version still travels inside,
+      # in the extracted directory name and in `oom-tui --version`.
       - name: Package
         run: |
-          staging="oom-tui-${{ github.ref_name }}-${{ matrix.target }}"
-          mkdir -p "$staging"
-          cp target/${{ matrix.target }}/release/oom-tui "$staging/"
-          cp README.md LICENSE "$staging/"
-          tar czf "$staging.tar.gz" "$staging"
-          sha256sum "$staging.tar.gz" > "$staging.tar.gz.sha256"
+          dir="oom-tui-${{ github.ref_name }}-${{ matrix.target }}"
+          archive="oom-tui-${{ matrix.target }}.tar.gz"
+          mkdir -p "$dir"
+          cp target/${{ matrix.target }}/release/oom-tui "$dir/"
+          cp README.md LICENSE "$dir/"
+          tar czf "$archive" "$dir"
+          sha256sum "$archive" > "$archive.sha256"
 
       - uses: actions/upload-artifact@v4
         with:
