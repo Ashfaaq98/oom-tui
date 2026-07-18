@@ -143,8 +143,25 @@ cargo build --release   # binary at target/release/oom-tui
 oom-tui
 ```
 
-That's it. It finds the logs, parses them, and opens the dashboard. If the
-timeline is empty, your machine hasn't OOMed since boot — try `--all-boots`.
+That's it. It finds the logs, parses them, and opens the dashboard.
+
+**Seeing an empty timeline?** That usually means good news: nothing has been
+OOM-killed on this boot. To see the tool working with real data, either open
+the bundled sample:
+
+```bash
+oom-tui --file examples/sample-oom.log
+```
+
+or generate a genuine kill, safely contained to a 100 MB cgroup so nothing
+else on the machine is at risk:
+
+```bash
+systemd-run --user --scope -p MemoryMax=100M -p MemorySwapMax=0 \
+  python3 -c 'b=bytearray()
+while True: b.extend(bytearray(5*1024*1024))'
+oom-tui
+```
 
 ## Usage
 
@@ -298,6 +315,9 @@ configured with `oom_dump_tasks=0`.
 - No search or filtering inside the TUI, and no grouping by victim — if a
   process died fourteen times you get fourteen rows. Use `--format json` and
   `jq` for now.
+- `--all-boots` reads the entire kernel journal with no upper bound, which is
+  slow on machines with a long history — a 3.7 GB journal spanning 58 boots
+  takes minutes. Pair it with `--since` to keep it quick.
 - Page size is assumed to be 4 KiB when converting the task table, which is
   wrong on architectures configured with 16K/64K pages.
 - Not yet published to crates.io.
