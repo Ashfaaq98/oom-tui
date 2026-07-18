@@ -1,6 +1,6 @@
 name: Release
 
-# Tag a release with: git tag v0.2.0 && git push origin v0.2.0
+# Tag a release with: git tag v0.1.0 && git push origin v0.1.0
 on:
   push:
     tags: ["v*"]
@@ -10,8 +10,28 @@ permissions:
   contents: write
 
 jobs:
+  # A tag that disagrees with Cargo.toml would ship a tarball named v0.2.0
+  # containing a binary that reports `--version 0.1.0`. That is confusing and
+  # awkward to retract once people have downloaded it, so fail before spending
+  # any build minutes.
+  verify:
+    name: Verify tag matches Cargo.toml
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          manifest=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$manifest" != "$tag" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match Cargo.toml version $manifest"
+            exit 1
+          fi
+          echo "OK: tag $GITHUB_REF_NAME matches Cargo.toml version $manifest"
+
   build:
     name: Build ${{ matrix.target }}
+    needs: verify
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
