@@ -3,7 +3,7 @@ use oom_tui::app::App;
 use oom_tui::{parser, report, source, timestamp, ui};
 use clap::Parser as ClapParser;
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
+    event::{self, Event, KeyCode, KeyEventKind},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -145,7 +145,7 @@ fn resolve_format(requested: OutputFormat) -> OutputFormat {
 fn run_tui(mut app: App) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    if let Err(error) = execute!(stdout, EnterAlternateScreen, EnableMouseCapture) {
+    if let Err(error) = execute!(stdout, EnterAlternateScreen) {
         disable_raw_mode()?;
         return Err(error.into());
     }
@@ -155,11 +155,7 @@ fn run_tui(mut app: App) -> Result<()> {
     let result = event_loop(&mut terminal, &mut app);
 
     disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
 
     result
@@ -179,8 +175,16 @@ fn event_loop(
                 }
                 match key.code {
                     KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
+                    // While the raw pane is open the vertical keys scroll it
+                    // rather than moving between events.
+                    KeyCode::Down | KeyCode::Char('j') if app.show_raw => app.scroll_raw(1),
+                    KeyCode::Up | KeyCode::Char('k') if app.show_raw => app.scroll_raw(-1),
                     KeyCode::Down | KeyCode::Char('j') => app.select_next(),
                     KeyCode::Up | KeyCode::Char('k') => app.select_prev(),
+                    KeyCode::PageDown => app.scroll_raw(20),
+                    KeyCode::PageUp => app.scroll_raw(-20),
+                    KeyCode::Char('g') => app.scroll_raw_to(false),
+                    KeyCode::Char('G') => app.scroll_raw_to(true),
                     KeyCode::Char('l') => app.toggle_raw(),
                     KeyCode::Char('R') => reload(app),
                     _ => {}

@@ -7,6 +7,10 @@ pub struct App {
     pub list_state: ListState,
     pub source_description: String,
     pub show_raw: bool,
+    /// Scroll offset within the raw-log pane. Without this the pane silently
+    /// truncates long events, which defeats its whole purpose as the escape
+    /// hatch for checking the parse.
+    pub raw_scroll: u16,
     pub status: Option<String>,
     /// Kept so `R` can re-query the exact same source, including a `--file`
     /// path or a `--boot`/`--since` window.
@@ -31,6 +35,7 @@ impl App {
             list_state,
             source_description,
             show_raw: false,
+            raw_scroll: 0,
             status: None,
             source_options,
             warning,
@@ -51,6 +56,7 @@ impl App {
             None => 0,
         };
         self.list_state.select(Some(i));
+        self.raw_scroll = 0;
     }
 
     pub fn select_prev(&mut self) {
@@ -62,9 +68,29 @@ impl App {
             Some(i) => i - 1,
         };
         self.list_state.select(Some(i));
+        self.raw_scroll = 0;
     }
 
     pub fn toggle_raw(&mut self) {
         self.show_raw = !self.show_raw;
+        self.raw_scroll = 0;
+    }
+
+    pub fn scroll_raw(&mut self, delta: i32) {
+        let max = self
+            .selected()
+            .map(|e| e.raw_lines.len().saturating_sub(1) as u16)
+            .unwrap_or(0);
+        self.raw_scroll = (self.raw_scroll as i32 + delta).clamp(0, max as i32) as u16;
+    }
+
+    pub fn scroll_raw_to(&mut self, end: bool) {
+        self.raw_scroll = if end {
+            self.selected()
+                .map(|e| e.raw_lines.len().saturating_sub(1) as u16)
+                .unwrap_or(0)
+        } else {
+            0
+        };
     }
 }

@@ -112,6 +112,7 @@ fn timeline_item(event: &OomEvent) -> ListItem<'static> {
 }
 
 fn draw_detail(f: &mut Frame, area: Rect, app: &App) {
+    let raw_scroll = app.raw_scroll;
     let Some(event) = app.selected() else {
         f.render_widget(
             Paragraph::new("Select an incident to inspect its memory profile and kernel context.")
@@ -126,8 +127,9 @@ fn draw_detail(f: &mut Frame, area: Rect, app: &App) {
     if app.show_raw {
         f.render_widget(
             Paragraph::new(event.raw_lines.join("\n"))
-                .block(panel("RAW KERNEL EVIDENCE  ·  press l to return"))
+                .block(panel("RAW KERNEL EVIDENCE  ·  PgUp/PgDn scroll  ·  l to return"))
                 .style(Style::default().fg(TEXT))
+                .scroll((raw_scroll, 0))
                 .wrap(Wrap { trim: false }),
             area,
         );

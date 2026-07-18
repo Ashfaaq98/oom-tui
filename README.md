@@ -57,8 +57,13 @@ reassembles them into one browsable incident.
 
 ## Install
 
+Grab a static binary from [Releases][releases] — it needs no toolchain and no
+matching glibc, which matters when the machine that just OOMed is the one you
+are debugging:
+
 ```bash
-cargo install oom-tui
+curl -L https://github.com/Ashfaaq98/oom-tui/releases/latest/download/oom-tui-x86_64-unknown-linux-musl.tar.gz | tar xz
+./oom-tui
 ```
 
 Or build from source:
@@ -68,6 +73,8 @@ git clone https://github.com/Ashfaaq98/oom-tui
 cd oom-tui
 cargo build --release   # binary at target/release/oom-tui
 ```
+
+[releases]: https://github.com/Ashfaaq98/oom-tui/releases
 
 ## Usage
 
@@ -102,6 +109,7 @@ Output defaults to the dashboard on a terminal and a plain table when piped, so
 | `↑` / `k` | previous event |
 | `↓` / `j` | next event |
 | `l` | toggle raw kernel log for this event |
+| `PgUp` / `PgDn`, `g` / `G` | scroll the raw log |
 | `R` | reload from the live source |
 | `q` / `Esc` | quit |
 
