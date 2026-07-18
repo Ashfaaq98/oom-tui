@@ -1,193 +1,226 @@
-use crate::app::App;
+use crate::{app::App, model::OomEvent};
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
+    widgets::{Block, Borders, Cell, List, ListItem, Paragraph, Row, Table, Wrap},
     Frame,
 };
+
+const PANEL: Color = Color::Rgb(30, 35, 48);
+const SURFACE: Color = Color::Rgb(23, 27, 38);
+const MUTED: Color = Color::Rgb(143, 151, 171);
+const TEXT: Color = Color::Rgb(229, 231, 235);
+const ACCENT: Color = Color::Rgb(96, 165, 250);
+const CYAN: Color = Color::Rgb(45, 212, 191);
+const CRITICAL: Color = Color::Rgb(248, 113, 113);
+const WARNING: Color = Color::Rgb(251, 191, 36);
+const GOOD: Color = Color::Rgb(74, 222, 128);
 
 pub fn draw(f: &mut Frame, app: &mut App) {
     let root = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),      // title bar
-            Constraint::Percentage(35), // timeline
-            Constraint::Min(0),         // detail pane
-            Constraint::Length(1),      // help bar
+            Constraint::Length(3),
+            Constraint::Percentage(38),
+            Constraint::Min(12),
+            Constraint::Length(2),
         ])
         .split(f.size());
 
-    draw_title(f, root[0], app);
+    f.render_widget(Block::default().style(Style::default().bg(SURFACE)), f.size());
+    draw_header(f, root[0], app);
     draw_timeline(f, root[1], app);
     draw_detail(f, root[2], app);
-    draw_help(f, root[3], app);
+    draw_footer(f, root[3], app);
 }
 
-fn draw_title(f: &mut Frame, area: Rect, app: &App) {
+fn panel(title: &'static str) -> Block<'static> {
+    Block::default()
+        .title(Span::styled(
+            format!(" {title} "),
+            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+        ))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(PANEL))
+        .style(Style::default().bg(SURFACE))
+}
+
+fn draw_header(f: &mut Frame, area: Rect, app: &App) {
     let count = app.events.len();
-    let text = format!(
-        " oom-tui  —  {count} OOM-kill event{}  —  source: {}",
-        if count == 1 { "" } else { "s" },
-        app.source_description
+    let title = Line::from(vec![
+        Span::styled(" OOM", Style::default().fg(CRITICAL).add_modifier(Modifier::BOLD)),
+        Span::styled(" // INCIDENT CONSOLE", Style::default().fg(TEXT).add_modifier(Modifier::BOLD)),
+    ]);
+    let meta = Line::from(vec![
+        Span::styled(format!(" {count} incident{} ", if count == 1 { "" } else { "s" }), Style::default().fg(CYAN)),
+        Span::styled("•  ", Style::default().fg(MUTED)),
+        Span::styled(&app.source_description, Style::default().fg(MUTED)),
+    ]);
+    f.render_widget(
+        Paragraph::new(vec![title, meta])
+            .style(Style::default().bg(SURFACE))
+            .alignment(Alignment::Left),
+        area,
     );
-    let p = Paragraph::new(text).style(
-        Style::default()
-            .fg(Color::Black)
-            .bg(Color::Red)
-            .add_modifier(Modifier::BOLD),
-    );
-    f.render_widget(p, area);
 }
 
 fn draw_timeline(f: &mut Frame, area: Rect, app: &mut App) {
-    let block = Block::default()
-        .title(" Timeline (most recent last) ")
-        .borders(Borders::ALL);
-
     if app.events.is_empty() {
-        let p = Paragraph::new(
-            "No OOM-kill events found in the current log source.\n\
-             That's good news for your system's memory health!\n\n\
-             To generate a test event: run a memory-hog under a tight cgroup limit,\n\
-             or point oom-tui at a log file that contains one with --file <path>.",
-        )
-        .block(block)
-        .wrap(Wrap { trim: true })
-        .style(Style::default().fg(Color::DarkGray));
-        f.render_widget(p, area);
+        let message = vec![
+            Line::styled("No OOM kills found", Style::default().fg(GOOD).add_modifier(Modifier::BOLD)),
+            Line::styled("The selected kernel log source is clear.", Style::default().fg(MUTED)),
+            Line::from(""),
+            Line::styled("Tip  Run a memory-limited workload, then press R to refresh.", Style::default().fg(ACCENT)),
+        ];
+        f.render_widget(
+            Paragraph::new(message).block(panel("INCIDENT TIMELINE")).wrap(Wrap { trim: true }),
+            area,
+        );
         return;
     }
 
-    let items: Vec<ListItem> = app
-        .events
-        .iter()
-        .map(|e| {
-            let severity_color = severity_color(e);
-            ListItem::new(Line::from(vec![Span::styled(
-                e.summary_line(),
-                Style::default().fg(severity_color),
-            )]))
-        })
-        .collect();
-
+    let items: Vec<ListItem> = app.events.iter().map(timeline_item).collect();
     let list = List::new(items)
-        .block(block)
-        .highlight_style(
-            Style::default()
-                .bg(Color::DarkGray)
-                .add_modifier(Modifier::BOLD),
-        )
-        .highlight_symbol("▶ ");
-
+        .block(panel("INCIDENT TIMELINE  ·  newest last"))
+        .highlight_style(Style::default().bg(PANEL).add_modifier(Modifier::BOLD))
+        .highlight_symbol("▌ ");
     f.render_stateful_widget(list, area, &mut app.list_state);
 }
 
-fn severity_color(e: &crate::model::OomEvent) -> Color {
-    match e.rss_total_kb() {
-        Some(kb) if kb > 2_000_000 => Color::Red,
-        Some(kb) if kb > 500_000 => Color::Yellow,
-        _ => Color::Green,
-    }
+fn timeline_item(event: &OomEvent) -> ListItem<'static> {
+    let color = severity_color(event);
+    let timestamp = event.timestamp.as_deref().unwrap_or("unknown time");
+    let memory = memory(event.rss_total_kb());
+    let reaped = if event.reaped { "reclaimed" } else { "unconfirmed" };
+    ListItem::new(vec![
+        Line::from(vec![
+            Span::styled("● ", Style::default().fg(color)),
+            Span::styled(event.victim_name.clone(), Style::default().fg(TEXT).add_modifier(Modifier::BOLD)),
+            Span::styled(format!("  PID {}", event.victim_pid), Style::default().fg(MUTED)),
+            Span::styled(format!("  {memory}"), Style::default().fg(color).add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from(vec![
+            Span::styled("  ", Style::default()),
+            Span::styled(timestamp.to_string(), Style::default().fg(MUTED)),
+            Span::styled("  ·  ", Style::default().fg(MUTED)),
+            Span::styled(reaped, Style::default().fg(if event.reaped { GOOD } else { WARNING })),
+            Span::styled("  ·  ", Style::default().fg(MUTED)),
+            Span::styled(event.cgroup.clone().unwrap_or_else(|| "host / unspecified cgroup".to_string()), Style::default().fg(MUTED)),
+        ]),
+    ])
 }
 
 fn draw_detail(f: &mut Frame, area: Rect, app: &App) {
-    let block = Block::default()
-        .title(" Autopsy ")
-        .borders(Borders::ALL);
-
-    let Some(e) = app.selected() else {
+    let Some(event) = app.selected() else {
         f.render_widget(
-            Paragraph::new("Select an event above to see details.").block(block),
+            Paragraph::new("Select an incident to inspect its memory profile and kernel context.")
+                .style(Style::default().fg(MUTED))
+                .alignment(Alignment::Center)
+                .block(panel("INCIDENT DETAIL")),
             area,
         );
         return;
     };
 
     if app.show_raw {
-        let raw = e.raw_lines.join("\n");
-        let raw_block = Block::default()
-            .title(" Autopsy — raw log lines (press 'l' to go back) ")
-            .borders(Borders::ALL);
-        let p = Paragraph::new(raw)
-            .block(raw_block)
-            .wrap(Wrap { trim: false })
-            .style(Style::default().fg(Color::Gray));
-        f.render_widget(p, area);
+        f.render_widget(
+            Paragraph::new(event.raw_lines.join("\n"))
+                .block(panel("RAW KERNEL EVIDENCE  ·  press l to return"))
+                .style(Style::default().fg(TEXT))
+                .wrap(Wrap { trim: false }),
+            area,
+        );
         return;
     }
 
-    let label_style = Style::default().fg(Color::Cyan);
-    let value_style = Style::default().fg(Color::White);
-    let dim = Style::default().fg(Color::DarkGray);
-
-    let row = |label: &str, value: String| {
-        Line::from(vec![
-            Span::styled(format!("{label:<16}"), label_style),
-            Span::styled(value, value_style),
-        ])
-    };
-    let na = |o: Option<String>| o.unwrap_or_else(|| "—".to_string());
-    let kb = |v: Option<u64>| v.map(|v| format!("{v} kB ({:.1} MB)", v as f64 / 1024.0));
-
-    let mut lines = vec![
-        row(
-            "Victim",
-            format!("{} (pid {})", e.victim_name, e.victim_pid),
-        ),
-        row("Timestamp", na(e.timestamp.clone())),
-        row("UID", na(e.uid.map(|u| u.to_string()))),
-        row(
-            "oom_score_adj",
-            na(e.oom_score_adj.map(|v| v.to_string())),
-        ),
-        Line::from(""),
-        row(
-            "total-vm",
-            na(kb(e.total_vm_kb)),
-        ),
-        row("anon-rss", na(kb(e.anon_rss_kb))),
-        row("file-rss", na(kb(e.file_rss_kb))),
-        row("shmem-rss", na(kb(e.shmem_rss_kb))),
-        row("pgtables", na(kb(e.pgtables_kb))),
-        row(
-            "RSS total",
-            na(kb(e.rss_total_kb())),
-        ),
-        Line::from(""),
-        row("Constraint", na(e.constraint.clone())),
-        row("Cgroup", na(e.cgroup.clone())),
-        Line::from(""),
-        row("Triggered by", na(e.trigger_process.clone())),
-        row("gfp_mask", na(e.gfp_mask.clone())),
-        row("alloc order", na(e.order.map(|v| v.to_string()))),
-        row(
-            "Reaped",
-            if e.reaped {
-                "yes — memory reclaimed".to_string()
-            } else {
-                "not confirmed in log window".to_string()
-            },
-        ),
-    ];
-
-    lines.push(Line::from(""));
-    lines.push(Line::styled(
-        "press 'l' to toggle the raw kernel log lines for this event",
-        dim,
-    ));
-
-    let p = Paragraph::new(lines).block(block).wrap(Wrap { trim: true });
-    f.render_widget(p, area);
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(area);
+    draw_identity(f, columns[0], event);
+    draw_memory(f, columns[1], event);
 }
 
-fn draw_help(f: &mut Frame, area: Rect, app: &App) {
-    let mut text = " ↑/k up   ↓/j down   l raw log   R reload   q quit".to_string();
+fn draw_identity(f: &mut Frame, area: Rect, event: &OomEvent) {
+    let rows = vec![
+        detail_row("VICTIM", format!("{}  (PID {})", event.victim_name, event.victim_pid), TEXT),
+        detail_row("TIMESTAMP", event.timestamp.clone().unwrap_or_else(|| "—".to_string()), TEXT),
+        detail_row("UID", option_u32(event.uid), TEXT),
+        detail_row("OOM SCORE ADJ", option_i32(event.oom_score_adj), TEXT),
+        detail_row("CONSTRAINT", event.constraint.clone().unwrap_or_else(|| "—".to_string()), WARNING),
+        detail_row("CGROUP", event.cgroup.clone().unwrap_or_else(|| "—".to_string()), CYAN),
+        detail_row("TRIGGER", event.trigger_process.clone().unwrap_or_else(|| "—".to_string()), TEXT),
+        detail_row("ALLOCATION", allocation(event), TEXT),
+        detail_row("REAPER", if event.reaped { "confirmed — memory reclaimed".to_string() } else { "not confirmed in log window".to_string() }, if event.reaped { GOOD } else { WARNING }),
+    ];
+    f.render_widget(detail_table(rows, "INCIDENT CONTEXT"), area);
+}
+
+fn draw_memory(f: &mut Frame, area: Rect, event: &OomEvent) {
+    let total_color = severity_color(event);
+    let rows = vec![
+        detail_row("RSS TOTAL", memory(event.rss_total_kb()), total_color),
+        detail_row("ANONYMOUS RSS", memory(event.anon_rss_kb), TEXT),
+        detail_row("FILE RSS", memory(event.file_rss_kb), TEXT),
+        detail_row("SHMEM RSS", memory(event.shmem_rss_kb), TEXT),
+        detail_row("PAGE TABLES", memory(event.pgtables_kb), TEXT),
+        detail_row("TOTAL VIRTUAL", memory(event.total_vm_kb), MUTED),
+        detail_row("RAW LINES", format!("{} captured", event.raw_lines.len()), MUTED),
+    ];
+    f.render_widget(detail_table(rows, "MEMORY AUTOPSY"), area);
+}
+
+fn detail_table(rows: Vec<Row<'static>>, title: &'static str) -> Table<'static> {
+    Table::new(rows, [Constraint::Length(16), Constraint::Min(8)])
+        .block(panel(title))
+        .column_spacing(1)
+        .style(Style::default().fg(TEXT).bg(SURFACE))
+}
+
+fn detail_row(label: &'static str, value: String, color: Color) -> Row<'static> {
+    Row::new(vec![
+        Cell::from(label).style(Style::default().fg(MUTED).add_modifier(Modifier::BOLD)),
+        Cell::from(value).style(Style::default().fg(color)),
+    ])
+}
+
+fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
+    let mut help = vec![
+        Span::styled(" ↑/k ", Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)), Span::styled("navigate   ", Style::default().fg(MUTED)),
+        Span::styled("l ", Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)), Span::styled("raw evidence   ", Style::default().fg(MUTED)),
+        Span::styled("R ", Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)), Span::styled("reload   ", Style::default().fg(MUTED)),
+        Span::styled("q ", Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)), Span::styled("quit", Style::default().fg(MUTED)),
+    ];
     if let Some(status) = &app.status {
-        text.push_str("   —   ");
-        text.push_str(status);
+        help.push(Span::styled("   │   ", Style::default().fg(MUTED)));
+        help.push(Span::styled(status.clone(), Style::default().fg(WARNING).add_modifier(Modifier::BOLD)));
     }
-    let p = Paragraph::new(text)
-    .style(Style::default().fg(Color::Black).bg(Color::Gray));
-    f.render_widget(p, area);
+    f.render_widget(
+        Paragraph::new(Line::from(help)).style(Style::default().bg(PANEL)).alignment(Alignment::Center),
+        area,
+    );
+}
+
+fn severity_color(event: &OomEvent) -> Color {
+    match event.rss_total_kb() {
+        Some(kb) if kb > 2_000_000 => CRITICAL,
+        Some(kb) if kb > 500_000 => WARNING,
+        _ => GOOD,
+    }
+}
+
+fn memory(kb: Option<u64>) -> String {
+    kb.map(|value| format!("{:.1} MiB  ·  {value} kB", value as f64 / 1024.0))
+        .unwrap_or_else(|| "—".to_string())
+}
+
+fn option_u32(value: Option<u32>) -> String { value.map(|v| v.to_string()).unwrap_or_else(|| "—".to_string()) }
+fn option_i32(value: Option<i32>) -> String { value.map(|v| v.to_string()).unwrap_or_else(|| "—".to_string()) }
+
+fn allocation(event: &OomEvent) -> String {
+    match (&event.gfp_mask, event.order) {
+        (Some(mask), Some(order)) => format!("order {order}  ·  {mask}"),
+        _ => "—".to_string(),
+    }
 }

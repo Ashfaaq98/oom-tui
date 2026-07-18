@@ -50,7 +50,7 @@ fn regexes() -> &'static Regexes {
         )
         .unwrap(),
         killed: Regex::new(
-            r"^Out of memory:\s*Killed process\s+(?P<pid>\d+)\s*\((?P<name>[^)]+)\)(?:,\s*UID\s*(?P<uid1>\d+))?[,\s]*total-vm:(?P<vm>\d+)kB,\s*anon-rss:(?P<arss>\d+)kB,\s*file-rss:(?P<frss>\d+)kB,\s*shmem-rss:(?P<srss>\d+)kB(?:,\s*UID:(?P<uid2>\d+))?\s*pgtables:(?P<pgt>\d+)kB\s*oom_score_adj:(?P<adj>-?\d+)",
+            r"^(?i:(?:Memory cgroup )?Out of memory:)\s*Killed process\s+(?P<pid>\d+)\s*\((?P<name>[^)]+)\)(?:,\s*UID\s*(?P<uid1>\d+))?[,\s]*total-vm:(?P<vm>\d+)kB,\s*anon-rss:(?P<arss>\d+)kB,\s*file-rss:(?P<frss>\d+)kB,\s*shmem-rss:(?P<srss>\d+)kB(?:,\s*UID:(?P<uid2>\d+))?\s*pgtables:(?P<pgt>\d+)kB\s*oom_score_adj:(?P<adj>-?\d+)",
         )
         .unwrap(),
         reaped: Regex::new(r"^oom_reaper:\s*reaped process\s+(?P<pid>\d+)\s*\((?P<name>[^)]+)\)")
@@ -207,6 +207,8 @@ mod tests {
 
     const DMESG_HUMAN_SAMPLE: &str = "[Sat Jul 18 09:03:34 2026] Out of memory: Killed process 99 (worker) total-vm:1024kB, anon-rss:512kB, file-rss:0kB, shmem-rss:0kB, UID:1000 pgtables:16kB oom_score_adj:0";
 
+    const MEMCG_SAMPLE: &str = "Memory cgroup out of memory: Killed process 42 (stress-ng-vm) total-vm:524288kB, anon-rss:262144kB, file-rss:0kB, shmem-rss:0kB, UID:1000 pgtables:512kB oom_score_adj:0";
+
     #[test]
     fn parses_full_dmesg_sequence() {
         let events = parse_log(SAMPLE);
@@ -245,6 +247,14 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].timestamp.as_deref(), Some("Sat Jul 18 09:03:34 2026"));
         assert_eq!(events[0].victim_name, "worker");
+    }
+
+    #[test]
+    fn parses_memory_cgroup_kill() {
+        let events = parse_log(MEMCG_SAMPLE);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].victim_pid, 42);
+        assert_eq!(events[0].victim_name, "stress-ng-vm");
     }
 
     #[test]

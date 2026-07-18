@@ -44,7 +44,10 @@ fn main() -> Result<()> {
 fn run_tui(mut app: App) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    if let Err(error) = execute!(stdout, EnterAlternateScreen, EnableMouseCapture) {
+        disable_raw_mode()?;
+        return Err(error.into());
+    }
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 

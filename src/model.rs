@@ -50,27 +50,4 @@ impl OomEvent {
             _ => None,
         }
     }
-
-    pub fn summary_line(&self) -> String {
-        let ts = self.timestamp.as_deref().unwrap_or("--");
-        let mem = self
-            .rss_total_kb()
-            .map(|kb| format!("{:>7.1} MB", kb as f64 / 1024.0))
-            .unwrap_or_else(|| "   ??? MB".to_string());
-        format!(
-            "{:<20} {:<24} pid {:<8} {}",
-            ts,
-            truncate(&self.victim_name, 24),
-            self.victim_pid,
-            mem
-        )
-    }
-}
-
-fn truncate(s: &str, max: usize) -> String {
-    if s.chars().count() <= max {
-        s.to_string()
-    } else {
-        s.chars().take(max.saturating_sub(1)).collect::<String>() + "…"
-    }
 }
