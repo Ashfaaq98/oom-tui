@@ -5,7 +5,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use oom_tui::app::App;
+use oom_tui::app::{App, FocusPane};
 use oom_tui::report::OutputFormat;
 use oom_tui::source::{BootScope, SourceOptions};
 use oom_tui::{parser, report, source, timestamp, ui};
@@ -172,18 +172,23 @@ fn event_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut A
                 }
                 match key.code {
                     KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
-                    // While the raw pane is open the vertical keys scroll it
-                    // rather than moving between events.
-                    KeyCode::Down | KeyCode::Char('j') if app.show_raw => app.scroll_raw(1),
-                    KeyCode::Up | KeyCode::Char('k') if app.show_raw => app.scroll_raw(-1),
-                    KeyCode::Down | KeyCode::Char('j') => app.select_next(),
-                    KeyCode::Up | KeyCode::Char('k') => app.select_prev(),
-                    KeyCode::PageDown => app.scroll_raw(20),
-                    KeyCode::PageUp => app.scroll_raw(-20),
-                    KeyCode::Char('g') => app.scroll_raw_to(false),
-                    KeyCode::Char('G') => app.scroll_raw_to(true),
-                    KeyCode::Char('l') => app.toggle_raw(),
-                    KeyCode::Char('R') => reload(app),
+                    KeyCode::Tab => app.focus_next(),
+                    KeyCode::Down | KeyCode::Char('j') if app.focus == FocusPane::Evidence => app.scroll_raw(1),
+                    KeyCode::Up | KeyCode::Char('k') if app.focus == FocusPane::Evidence => app.scroll_raw(-1),
+                    KeyCode::Down | KeyCode::Char('j') if app.focus == FocusPane::Details => app.scroll_details(1),
+                    KeyCode::Up | KeyCode::Char('k') if app.focus == FocusPane::Details => app.scroll_details(-1),
+                    KeyCode::Down | KeyCode::Char('j') if app.focus == FocusPane::Incidents => app.select_next(),
+                    KeyCode::Up | KeyCode::Char('k') if app.focus == FocusPane::Incidents => app.select_prev(),
+                    KeyCode::PageDown if app.focus == FocusPane::Evidence => app.scroll_raw(20),
+                    KeyCode::PageUp if app.focus == FocusPane::Evidence => app.scroll_raw(-20),
+                    KeyCode::Char('g') if app.focus == FocusPane::Evidence => app.scroll_raw_to(false),
+                    KeyCode::Char('G') if app.focus == FocusPane::Evidence => app.scroll_raw_to(true),
+                    KeyCode::PageDown if app.focus == FocusPane::Details => app.scroll_details(20),
+                    KeyCode::PageUp if app.focus == FocusPane::Details => app.scroll_details(-20),
+                    KeyCode::Char('g') if app.focus == FocusPane::Details => app.scroll_details_to(false),
+                    KeyCode::Char('G') if app.focus == FocusPane::Details => app.scroll_details_to(true),
+                    KeyCode::Char('r') => reload(app),
+                    KeyCode::Char('t') => app.cycle_theme(),
                     _ => {}
                 }
             }
