@@ -1,19 +1,34 @@
 <div align="center">
 
-# oom-tui
+# OOM-TUI
 
-**OOM-killer forensics for Linux.** Reconstructs scattered kernel log lines into readable OOM incidents, so you can see what was killed, why, and what else was using memory.
+**Interactive OOM incident response for Linux.** Reconstructs scattered kernel log lines into readable incidents.
 
 [![CI](https://github.com/Ashfaaq98/oom-tui/actions/workflows/ci.yml/badge.svg)](https://github.com/Ashfaaq98/oom-tui/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Ashfaaq98/oom-tui?display_name=tag&sort=semver)](https://github.com/Ashfaaq98/oom-tui/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust 1.75+](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](#development)
-[![Platform: Linux](https://img.shields.io/badge/platform-linux-lightgrey.svg)](#requirements)
+[![Platform: Linux](https://img.shields.io/badge/platform-linux-lightgrey.svg)](#log-sources-and-requirements)
+[![Last commit](https://img.shields.io/github/last-commit/Ashfaaq98/oom-tui)](https://github.com/Ashfaaq98/oom-tui/commits/main)
+[![Open issues](https://img.shields.io/github/issues/Ashfaaq98/oom-tui)](https://github.com/Ashfaaq98/oom-tui/issues)
 
 </div>
 
-`oom-tui` turns kernel OOM output into a browsable timeline and incident view. It distinguishes host-wide exhaustion from cgroup limits, reports the victim's memory breakdown, ranks the kernel's task dump, and decodes common container and Kubernetes cgroup paths.
+`oom-tui` parses Linux kernel OOM reports and reconstructs each incident from the recorded log context. It shows the terminated process, reported memory usage, cgroup scope, and other memory consumers captured at the time.
 
-The process that was killed is not necessarily the process that caused the pressure. `oom-tui` makes that evidence visible.
+```mermaid
+flowchart LR
+    A[Kernel OOM logs] --> B[Log source]
+    B --> C[OOM-TUI parser]
+    C --> D[Reconstructed incident]
+    D --> E[TUI]
+    D --> F[Table]
+    D --> G[JSON / JSONL]
+```
+
+It distinguishes host-wide exhaustion from cgroup-limit kills when that context is present in the log, ranks the kernel task dump when available, and decodes common container and Kubernetes cgroup paths.
+
+The victim is not necessarily the root cause. The task dump is a snapshot of processes recorded at the time of the kill; it can help identify memory consumers to investigate, but does not prove which process caused the pressure.
 
 ## Install
 
@@ -24,7 +39,7 @@ curl -L https://github.com/Ashfaaq98/oom-tui/releases/latest/download/oom-tui-x8
 sudo install oom-tui-*/oom-tui /usr/local/bin/oom-tui
 ```
 
-Both `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` archives are published.
+Release builds target `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`.
 
 Or build from source (Rust 1.75+):
 
@@ -41,7 +56,7 @@ cargo build --release
 oom-tui
 ```
 
-By default, it reads the current boot's kernel journal and opens an interactive TUI. When stdout is piped, it emits a plain table instead.
+By default, it tries the current boot's kernel journal and opens an interactive TUI. When stdout is piped, it emits a plain table instead; if the journal is unavailable, it falls back to other supported log sources.
 
 To inspect the bundled example:
 
@@ -68,9 +83,10 @@ oom-tui [OPTIONS]
 
 | Key | Action |
 | --- | --- |
-| `↑`/`k`, `↓`/`j` | Select an incident; scroll raw evidence when it is open. |
+| `↑`/`k`, `↓`/`j` | Select an incident; scroll raw evidence or full details when open. |
 | `l` | Toggle raw kernel lines. |
-| `PgUp`/`PgDn`, `g`/`G` | Scroll raw evidence. |
+| `i` | Toggle complete incident details. |
+| `PgUp`/`PgDn`, `g`/`G` | Scroll raw evidence or full details. |
 | `R` | Reload the selected source. |
 | `q`/`Esc` | Quit. |
 
@@ -112,13 +128,13 @@ Linux is required. `oom-tui` reads the first available source in this order:
 
 `--boot`, `--all-boots`, `--since`, and `--until` require `journalctl`; a fallback source is explicitly flagged when it cannot honour those filters. You may need permission to read the kernel journal (for example, membership of `systemd-journal`) or to run the command with `sudo`.
 
-## Output and compatibility
+## Evidence model and compatibility
 
 `--format json` returns one JSON array; `--format jsonl` returns one object per line. The JSON field names are a stable public contract within a major version.
 
-The parser handles global OOM kills, memory-cgroup OOM kills, and `oom_kill_allocating_task` logs, including older task-table layouts. It only reports evidence present in the log; a truncated task dump or an unavailable timestamp remains incomplete rather than guessed.
+The parser handles global OOM kills, memory-cgroup OOM kills, and `oom_kill_allocating_task` logs, including older task-table layouts. It only reports evidence present in the log: a missing task dump, cgroup field, or trustworthy wall-clock timestamp remains unavailable rather than guessed.
 
-This is a viewer for existing OOM evidence, not a memory monitor, daemon, alerting system, or eBPF tracer.
+This is a viewer for existing OOM evidence, not a memory monitor, daemon, alerting system, eBPF tracer, or definitive root-cause analysis tool.
 
 ## Development
 
