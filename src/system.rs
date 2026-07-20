@@ -35,9 +35,10 @@ fn total_ram() -> Option<String> {
 
 fn cpu_model() -> Option<String> {
     let cpuinfo = std::fs::read_to_string("/proc/cpuinfo").ok()?;
-    let model = cpuinfo
-        .lines()
-        .find_map(|line| line.strip_prefix("model name\t: ").or_else(|| line.strip_prefix("Hardware\t: ")))?;
+    let model = cpuinfo.lines().find_map(|line| {
+        line.strip_prefix("model name\t: ")
+            .or_else(|| line.strip_prefix("Hardware\t: "))
+    })?;
     Some(format!("CPU {}", compact(model, 42)))
 }
 
@@ -66,7 +67,9 @@ fn gpu_model() -> Option<String> {
 
 fn os_version() -> Option<String> {
     let release = std::fs::read_to_string("/etc/os-release").ok()?;
-    let pretty = release.lines().find_map(|line| line.strip_prefix("PRETTY_NAME="))?;
+    let pretty = release
+        .lines()
+        .find_map(|line| line.strip_prefix("PRETTY_NAME="))?;
     Some(format!("OS {}", compact(pretty.trim_matches('"'), 34)))
 }
 
@@ -75,7 +78,11 @@ fn compact(value: &str, max: usize) -> String {
     if value.chars().count() <= max {
         value.to_string()
     } else {
-        value.chars().take(max.saturating_sub(1)).collect::<String>() + "…"
+        value
+            .chars()
+            .take(max.saturating_sub(1))
+            .collect::<String>()
+            + "…"
     }
 }
 

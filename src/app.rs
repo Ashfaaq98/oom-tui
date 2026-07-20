@@ -125,7 +125,10 @@ impl App {
 
     pub fn cycle_theme(&mut self) {
         self.theme = self.theme.next();
-        self.status = Some(format!("theme — {}", self.theme.label().to_ascii_lowercase()));
+        self.status = Some(format!(
+            "theme — {}",
+            self.theme.label().to_ascii_lowercase()
+        ));
     }
 
     pub fn scroll_raw(&mut self, delta: i32) {

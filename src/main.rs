@@ -173,20 +173,40 @@ fn event_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut A
                 match key.code {
                     KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
                     KeyCode::Tab => app.focus_next(),
-                    KeyCode::Down | KeyCode::Char('j') if app.focus == FocusPane::Evidence => app.scroll_raw(1),
-                    KeyCode::Up | KeyCode::Char('k') if app.focus == FocusPane::Evidence => app.scroll_raw(-1),
-                    KeyCode::Down | KeyCode::Char('j') if app.focus == FocusPane::Details => app.scroll_details(1),
-                    KeyCode::Up | KeyCode::Char('k') if app.focus == FocusPane::Details => app.scroll_details(-1),
-                    KeyCode::Down | KeyCode::Char('j') if app.focus == FocusPane::Incidents => app.select_next(),
-                    KeyCode::Up | KeyCode::Char('k') if app.focus == FocusPane::Incidents => app.select_prev(),
+                    KeyCode::Down | KeyCode::Char('j') if app.focus == FocusPane::Evidence => {
+                        app.scroll_raw(1)
+                    }
+                    KeyCode::Up | KeyCode::Char('k') if app.focus == FocusPane::Evidence => {
+                        app.scroll_raw(-1)
+                    }
+                    KeyCode::Down | KeyCode::Char('j') if app.focus == FocusPane::Details => {
+                        app.scroll_details(1)
+                    }
+                    KeyCode::Up | KeyCode::Char('k') if app.focus == FocusPane::Details => {
+                        app.scroll_details(-1)
+                    }
+                    KeyCode::Down | KeyCode::Char('j') if app.focus == FocusPane::Incidents => {
+                        app.select_next()
+                    }
+                    KeyCode::Up | KeyCode::Char('k') if app.focus == FocusPane::Incidents => {
+                        app.select_prev()
+                    }
                     KeyCode::PageDown if app.focus == FocusPane::Evidence => app.scroll_raw(20),
                     KeyCode::PageUp if app.focus == FocusPane::Evidence => app.scroll_raw(-20),
-                    KeyCode::Char('g') if app.focus == FocusPane::Evidence => app.scroll_raw_to(false),
-                    KeyCode::Char('G') if app.focus == FocusPane::Evidence => app.scroll_raw_to(true),
+                    KeyCode::Char('g') if app.focus == FocusPane::Evidence => {
+                        app.scroll_raw_to(false)
+                    }
+                    KeyCode::Char('G') if app.focus == FocusPane::Evidence => {
+                        app.scroll_raw_to(true)
+                    }
                     KeyCode::PageDown if app.focus == FocusPane::Details => app.scroll_details(20),
                     KeyCode::PageUp if app.focus == FocusPane::Details => app.scroll_details(-20),
-                    KeyCode::Char('g') if app.focus == FocusPane::Details => app.scroll_details_to(false),
-                    KeyCode::Char('G') if app.focus == FocusPane::Details => app.scroll_details_to(true),
+                    KeyCode::Char('g') if app.focus == FocusPane::Details => {
+                        app.scroll_details_to(false)
+                    }
+                    KeyCode::Char('G') if app.focus == FocusPane::Details => {
+                        app.scroll_details_to(true)
+                    }
                     KeyCode::Char('r') => reload(app),
                     KeyCode::Char('t') => app.cycle_theme(),
                     _ => {}
