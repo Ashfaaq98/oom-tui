@@ -173,19 +173,12 @@ fn event_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut A
                 match key.code {
                     KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
                     KeyCode::Tab => app.focus_next(),
-                    // The compact fallback keeps the old full-screen raw pane.
-                    KeyCode::Down | KeyCode::Char('j') if app.show_raw => app.scroll_raw(1),
-                    KeyCode::Up | KeyCode::Char('k') if app.show_raw => app.scroll_raw(-1),
                     KeyCode::Down | KeyCode::Char('j') if app.focus == FocusPane::Evidence => app.scroll_raw(1),
                     KeyCode::Up | KeyCode::Char('k') if app.focus == FocusPane::Evidence => app.scroll_raw(-1),
                     KeyCode::Down | KeyCode::Char('j') if app.focus == FocusPane::Details => app.scroll_details(1),
                     KeyCode::Up | KeyCode::Char('k') if app.focus == FocusPane::Details => app.scroll_details(-1),
                     KeyCode::Down | KeyCode::Char('j') if app.focus == FocusPane::Incidents => app.select_next(),
                     KeyCode::Up | KeyCode::Char('k') if app.focus == FocusPane::Incidents => app.select_prev(),
-                    KeyCode::PageDown if app.show_raw => app.scroll_raw(20),
-                    KeyCode::PageUp if app.show_raw => app.scroll_raw(-20),
-                    KeyCode::Char('g') if app.show_raw => app.scroll_raw_to(false),
-                    KeyCode::Char('G') if app.show_raw => app.scroll_raw_to(true),
                     KeyCode::PageDown if app.focus == FocusPane::Evidence => app.scroll_raw(20),
                     KeyCode::PageUp if app.focus == FocusPane::Evidence => app.scroll_raw(-20),
                     KeyCode::Char('g') if app.focus == FocusPane::Evidence => app.scroll_raw_to(false),
@@ -194,9 +187,8 @@ fn event_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut A
                     KeyCode::PageUp if app.focus == FocusPane::Details => app.scroll_details(-20),
                     KeyCode::Char('g') if app.focus == FocusPane::Details => app.scroll_details_to(false),
                     KeyCode::Char('G') if app.focus == FocusPane::Details => app.scroll_details_to(true),
-                    KeyCode::Char('l') if terminal.size()?.width < 90 => app.toggle_raw(),
-                    KeyCode::Char('l') => app.focus_evidence(),
-                    KeyCode::Char('R') => reload(app),
+                    KeyCode::Char('r') => reload(app),
+                    KeyCode::Char('t') => app.cycle_theme(),
                     _ => {}
                 }
             }

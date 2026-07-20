@@ -85,9 +85,9 @@ oom-tui [OPTIONS]
 | --- | --- |
 | `Tab` | Cycle focus between incidents, details, and raw evidence. |
 | `↑`/`k`, `↓`/`j` | Select an incident or scroll the focused details/evidence pane. |
-| `l` | Focus raw kernel evidence. |
 | `PgUp`/`PgDn`, `g`/`G` | Scroll raw evidence or full details. |
-| `R` | Reload the selected source. |
+| `r` | Reload the selected source. |
+| `t` | Cycle Midnight, Nord, and Gruvbox themes. |
 | `q`/`Esc` | Quit. |
 
 ## Examples

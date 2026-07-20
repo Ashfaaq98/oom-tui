@@ -1,5 +1,5 @@
 use crate::{
-    app::{App, FocusPane},
+    app::{App, FocusPane, Theme},
     model::OomEvent,
 };
 use ratatui::{
@@ -11,29 +11,54 @@ use ratatui::{
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-const SURFACE: Color = Color::Rgb(23, 27, 38);
-const PANEL: Color = Color::Rgb(30, 35, 48);
-const BORDER: Color = Color::Rgb(100, 116, 139);
-const MUTED: Color = Color::Rgb(148, 163, 184);
-const TEXT: Color = Color::Rgb(226, 232, 240);
-const BLUE: Color = Color::Rgb(59, 130, 246);
-const CYAN: Color = Color::Rgb(34, 211, 238);
-const CRITICAL: Color = Color::Rgb(248, 113, 113);
-const WARNING: Color = Color::Rgb(251, 191, 36);
-const GOOD: Color = Color::Rgb(74, 222, 128);
 const MISSING: &str = "— not reported in log";
+
+#[derive(Clone, Copy)]
+struct Palette {
+    surface: Color,
+    panel: Color,
+    border: Color,
+    muted: Color,
+    text: Color,
+    selection: Color,
+    accent: Color,
+    critical: Color,
+    warning: Color,
+    good: Color,
+}
+
+fn palette(theme: Theme) -> Palette {
+    match theme {
+        Theme::Midnight => Palette {
+            surface: Color::Rgb(23, 27, 38), panel: Color::Rgb(30, 35, 48), border: Color::Rgb(100, 116, 139),
+            muted: Color::Rgb(148, 163, 184), text: Color::Rgb(226, 232, 240), selection: Color::Rgb(59, 130, 246),
+            accent: Color::Rgb(34, 211, 238), critical: Color::Rgb(248, 113, 113), warning: Color::Rgb(251, 191, 36), good: Color::Rgb(74, 222, 128),
+        },
+        Theme::Nord => Palette {
+            surface: Color::Rgb(46, 52, 64), panel: Color::Rgb(59, 66, 82), border: Color::Rgb(129, 161, 193),
+            muted: Color::Rgb(180, 190, 205), text: Color::Rgb(236, 239, 244), selection: Color::Rgb(94, 129, 172),
+            accent: Color::Rgb(136, 192, 208), critical: Color::Rgb(191, 97, 106), warning: Color::Rgb(235, 203, 139), good: Color::Rgb(163, 190, 140),
+        },
+        Theme::Gruvbox => Palette {
+            surface: Color::Rgb(40, 40, 40), panel: Color::Rgb(60, 56, 54), border: Color::Rgb(146, 131, 116),
+            muted: Color::Rgb(168, 153, 132), text: Color::Rgb(235, 219, 178), selection: Color::Rgb(69, 133, 136),
+            accent: Color::Rgb(142, 192, 124), critical: Color::Rgb(251, 73, 52), warning: Color::Rgb(250, 189, 47), good: Color::Rgb(184, 187, 38),
+        },
+    }
+}
 
 pub fn draw(f: &mut Frame, app: &mut App) {
     let area = f.size();
-    f.render_widget(Block::default().style(Style::default().bg(SURFACE)), area);
+    let colors = palette(app.theme);
+    f.render_widget(Block::default().style(Style::default().bg(colors.surface)), area);
     if area.width >= 90 {
         let root = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(4), Constraint::Min(0), Constraint::Length(2)])
             .split(area);
-        draw_header(f, root[0], app);
-        draw_master_detail(f, root[1], app);
-        draw_footer(f, root[2], app);
+        draw_header(f, root[0], app, colors);
+        draw_master_detail(f, root[1], app, colors);
+        draw_footer(f, root[2], app, colors);
     } else {
         let timeline = timeline_height(area.height, app.events.len());
         let root = Layout::default()
@@ -45,10 +70,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                 Constraint::Length(2),
             ])
             .split(area);
-        draw_header(f, root[0], app);
-        draw_incident_list(f, root[1], app, "INCIDENT TIMELINE  ·  newest last");
-        draw_detail(f, root[2], app);
-        draw_footer(f, root[3], app);
+        draw_header(f, root[0], app, colors);
+        draw_incident_list(f, root[1], app, "INCIDENT TIMELINE  ·  newest last", colors);
+        draw_detail(f, root[2], app, colors);
+        draw_footer(f, root[3], app, colors);
     }
 }
 
@@ -63,73 +88,75 @@ fn timeline_height(terminal_height: u16, events: usize) -> u16 {
     wanted.min(max_timeline.max(3))
 }
 
-fn panel(title: impl Into<Line<'static>>) -> Block<'static> {
+fn panel(title: impl Into<Line<'static>>, colors: Palette) -> Block<'static> {
     Block::default()
         .title(title)
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(BORDER))
-        .style(Style::default().bg(SURFACE))
+        .border_style(Style::default().fg(colors.border))
+        .style(Style::default().bg(colors.surface))
 }
 
-fn panel_title(title: impl Into<String>) -> Line<'static> {
+fn panel_title(title: impl Into<String>, colors: Palette) -> Line<'static> {
     Line::from(Span::styled(
         format!(" {} ", title.into()),
-        Style::default().fg(CYAN).add_modifier(Modifier::BOLD),
+        Style::default().fg(colors.accent).add_modifier(Modifier::BOLD),
     ))
 }
 
-fn draw_header(f: &mut Frame, area: Rect, app: &App) {
+fn draw_header(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
     let count = app.events.len();
     let cgroup_count = app.events.iter().filter(|event| event.memcg_kill).count();
     let host_count = count.saturating_sub(cgroup_count);
     let selected = app.list_state.selected().map(|index| index + 1).unwrap_or(0);
     let title = Line::from(vec![
-        Span::styled(" OOM", Style::default().fg(CRITICAL).add_modifier(Modifier::BOLD)),
+        Span::styled(" OOM", Style::default().fg(colors.critical).add_modifier(Modifier::BOLD)),
         Span::styled(
             " // INCIDENT CONSOLE",
-            Style::default().fg(TEXT).add_modifier(Modifier::BOLD),
+            Style::default().fg(colors.text).add_modifier(Modifier::BOLD),
         ),
-        Span::styled("  │  ", Style::default().fg(MUTED)),
+        Span::styled("  │  ", Style::default().fg(colors.muted)),
         Span::styled(
             format!("v{}", env!("CARGO_PKG_VERSION")),
-            Style::default().fg(CYAN).add_modifier(Modifier::BOLD),
+            Style::default().fg(colors.accent).add_modifier(Modifier::BOLD),
         ),
-        Span::styled("  │  ", Style::default().fg(MUTED)),
-        Span::styled("KERNEL LOG FORENSICS", Style::default().fg(MUTED)),
+        Span::styled("  │  ", Style::default().fg(colors.muted)),
+        Span::styled(app.theme.label(), Style::default().fg(colors.accent).add_modifier(Modifier::BOLD)),
+        Span::styled("  │  ", Style::default().fg(colors.muted)),
+        Span::styled("KERNEL LOG FORENSICS", Style::default().fg(colors.muted)),
     ]);
     let meta = Line::from(vec![
         Span::styled(
             format!(" {count} INCIDENT{} ", if count == 1 { "" } else { "S" }),
-            Style::default().fg(CYAN),
+            Style::default().fg(colors.accent),
         ),
-        Span::styled(format!(" {cgroup_count} CGROUP "), Style::default().fg(CYAN)),
-        Span::styled("│", Style::default().fg(BORDER)),
-        Span::styled(format!(" {host_count} HOST-WIDE "), Style::default().fg(CYAN)),
-        Span::styled("│", Style::default().fg(BORDER)),
-        Span::styled(format!(" SELECTED {selected}/{count} "), Style::default().fg(TEXT)),
-        Span::styled("│", Style::default().fg(BORDER)),
+        Span::styled(format!(" {cgroup_count} CGROUP "), Style::default().fg(colors.accent)),
+        Span::styled("│", Style::default().fg(colors.border)),
+        Span::styled(format!(" {host_count} HOST-WIDE "), Style::default().fg(colors.accent)),
+        Span::styled("│", Style::default().fg(colors.border)),
+        Span::styled(format!(" SELECTED {selected}/{count} "), Style::default().fg(colors.text)),
+        Span::styled("│", Style::default().fg(colors.border)),
         Span::styled(
             truncate_to_width(&app.source_description, area.width.saturating_sub(56) as usize),
-            Style::default().fg(MUTED),
+            Style::default().fg(colors.muted),
         ),
     ]);
     f.render_widget(
         Paragraph::new(vec![title, meta])
-            .style(Style::default().bg(PANEL))
-            .block(Block::default().borders(Borders::BOTTOM).border_style(Style::default().fg(BORDER))),
+            .style(Style::default().bg(colors.panel))
+            .block(Block::default().borders(Borders::BOTTOM).border_style(Style::default().fg(colors.border))),
         area,
     );
 }
 
-fn draw_incident_list(f: &mut Frame, area: Rect, app: &mut App, title: &str) {
+fn draw_incident_list(f: &mut Frame, area: Rect, app: &mut App, title: &str, colors: Palette) {
     if app.events.is_empty() {
         let message = vec![
-            Line::styled("No OOM kills found", Style::default().fg(GOOD).add_modifier(Modifier::BOLD)),
-            Line::styled("The selected kernel log source is clear.", Style::default().fg(MUTED)),
+            Line::styled("No OOM kills found", Style::default().fg(colors.good).add_modifier(Modifier::BOLD)),
+            Line::styled("The selected kernel log source is clear.", Style::default().fg(colors.muted)),
         ];
         f.render_widget(
             Paragraph::new(message)
-                .block(panel(panel_title(title)))
+                .block(panel(panel_title(title, colors), colors))
                 .wrap(Wrap { trim: true }),
             area,
         );
@@ -140,41 +167,41 @@ fn draw_incident_list(f: &mut Frame, area: Rect, app: &mut App, title: &str) {
     let items: Vec<ListItem> = app
         .events
         .iter()
-        .map(|event| timeline_item(event, item_width))
+        .map(|event| timeline_item(event, item_width, colors))
         .collect();
     let list = List::new(items)
-        .block(panel(panel_title(title)))
+        .block(panel(panel_title(title, colors), colors))
         .highlight_style(
             Style::default()
-                .bg(if app.focus == FocusPane::Incidents { BLUE } else { PANEL })
-                .fg(TEXT)
+                .bg(if app.focus == FocusPane::Incidents { colors.selection } else { colors.panel })
+                .fg(colors.text)
                 .add_modifier(Modifier::BOLD),
         )
         .highlight_symbol("▌ ");
     f.render_stateful_widget(list, area, &mut app.list_state);
 }
 
-fn draw_master_detail(f: &mut Frame, area: Rect, app: &mut App) {
+fn draw_master_detail(f: &mut Frame, area: Rect, app: &mut App, colors: Palette) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(34), Constraint::Percentage(66)])
         .split(area);
-    draw_incident_list(f, columns[0], app, "INCIDENTS  ·  j/k select");
+    draw_incident_list(f, columns[0], app, "INCIDENTS  ·  j/k select", colors);
 
     let right = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(55), Constraint::Percentage(45)])
         .split(columns[1]);
-    draw_detail(f, right[0], app);
-    draw_raw_evidence(f, right[1], app);
+    draw_detail(f, right[0], app, colors);
+    draw_raw_evidence(f, right[1], app, colors);
 }
 
-fn draw_raw_evidence(f: &mut Frame, area: Rect, app: &App) {
+fn draw_raw_evidence(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
     let Some(event) = app.selected() else {
         f.render_widget(
             Paragraph::new("Select an incident to inspect its unmodified kernel evidence.")
-                .style(Style::default().fg(MUTED))
-                .block(panel(panel_title("RAW KERNEL EVIDENCE"))),
+                .style(Style::default().fg(colors.muted))
+                .block(panel(panel_title("RAW KERNEL EVIDENCE", colors), colors)),
             area,
         );
         return;
@@ -182,19 +209,19 @@ fn draw_raw_evidence(f: &mut Frame, area: Rect, app: &App) {
     let title = if app.focus == FocusPane::Evidence {
         "RAW KERNEL EVIDENCE  ·  FOCUSED  ·  j/k scroll"
     } else {
-        "RAW KERNEL EVIDENCE  ·  l or Tab to focus"
+        "RAW KERNEL EVIDENCE  ·  Tab to focus"
     };
     f.render_widget(
         Paragraph::new(event.raw_lines.join("\n"))
-            .block(panel(panel_title(title)))
-            .style(Style::default().fg(TEXT))
+            .block(panel(panel_title(title, colors), colors))
+            .style(Style::default().fg(colors.text))
             .scroll((app.raw_scroll, 0))
             .wrap(Wrap { trim: false }),
         area,
     );
 }
 
-fn timeline_item(event: &OomEvent, width: usize) -> ListItem<'static> {
+fn timeline_item(event: &OomEvent, width: usize, colors: Palette) -> ListItem<'static> {
     let impact = impact(event);
     let timestamp = event.timestamp.as_deref().unwrap_or("unknown time");
     let first = format!(
@@ -211,34 +238,22 @@ fn timeline_item(event: &OomEvent, width: usize) -> ListItem<'static> {
         if event.reaped { "reclaimed" } else { "not confirmed" }
     );
     ListItem::new(vec![
-        Line::styled(truncate_to_width(&first, width), Style::default().fg(impact.color())),
-        Line::styled(truncate_to_width(&second, width), Style::default().fg(MUTED)),
+        Line::styled(truncate_to_width(&first, width), Style::default().fg(impact.color(colors))),
+        Line::styled(truncate_to_width(&second, width), Style::default().fg(colors.muted)),
     ])
 }
 
-fn draw_detail(f: &mut Frame, area: Rect, app: &App) {
+fn draw_detail(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
     let Some(event) = app.selected() else {
         f.render_widget(
             Paragraph::new("Select an incident to inspect its recorded kernel context.")
-                .style(Style::default().fg(MUTED))
+                .style(Style::default().fg(colors.muted))
                 .alignment(Alignment::Center)
-                .block(panel(panel_title("INCIDENT DETAIL"))),
+                .block(panel(panel_title("INCIDENT DETAIL", colors), colors)),
             area,
         );
         return;
     };
-
-    if app.show_raw {
-        f.render_widget(
-            Paragraph::new(event.raw_lines.join("\n"))
-                .block(panel(panel_title("RAW KERNEL EVIDENCE  ·  l to return")))
-                .style(Style::default().fg(TEXT))
-                .scroll((app.raw_scroll, 0))
-                .wrap(Wrap { trim: false }),
-            area,
-        );
-        return;
-    }
 
     let title = if app.focus == FocusPane::Details {
         "INCIDENT DETAILS  ·  FOCUSED  ·  j/k scroll"
@@ -246,31 +261,30 @@ fn draw_detail(f: &mut Frame, area: Rect, app: &App) {
         "INCIDENT DETAILS  ·  Tab to focus"
     };
     f.render_widget(
-        Paragraph::new(full_detail_lines(event))
-            .block(panel(panel_title(title)))
-            .style(Style::default().fg(TEXT))
+        Paragraph::new(full_detail_lines(event, colors))
+            .block(panel(panel_title(title, colors), colors))
+            .style(Style::default().fg(colors.text))
             .scroll((app.detail_scroll, 0))
             .wrap(Wrap { trim: false }),
         area,
     );
 }
 
-fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
+fn draw_footer(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
     let mut help = vec![
-        shortcut("Tab", focus_label(app.focus)),
-        shortcut("j/k", "move/scroll"),
-        shortcut("i", "details"),
-        shortcut("l", "evidence"),
-        shortcut("R", "reload"),
-        shortcut("q", "quit"),
+        shortcut("Tab", focus_label(app.focus), colors),
+        shortcut("j/k", "move/scroll", colors),
+        shortcut("r", "reload", colors),
+        shortcut("t", "theme", colors),
+        shortcut("q", "quit", colors),
     ];
     if let Some(status) = &app.status {
-        help.push(Span::styled("  │  ", Style::default().fg(MUTED)));
-        help.push(Span::styled(status, Style::default().fg(WARNING).add_modifier(Modifier::BOLD)));
+        help.push(Span::styled("  │  ", Style::default().fg(colors.muted)));
+        help.push(Span::styled(status, Style::default().fg(colors.warning).add_modifier(Modifier::BOLD)));
     }
     f.render_widget(
         Paragraph::new(Line::from(help))
-            .style(Style::default().bg(PANEL))
+            .style(Style::default().bg(colors.panel))
             .alignment(Alignment::Center),
         area,
     );
@@ -284,10 +298,10 @@ fn focus_label(focus: FocusPane) -> &'static str {
     }
 }
 
-fn shortcut(key: &'static str, label: &'static str) -> Span<'static> {
+fn shortcut(key: &'static str, label: &'static str, colors: Palette) -> Span<'static> {
     Span::styled(
         format!(" {key}:{label} "),
-        Style::default().fg(CYAN).add_modifier(Modifier::BOLD),
+        Style::default().fg(colors.accent).add_modifier(Modifier::BOLD),
     )
 }
 
@@ -309,12 +323,12 @@ impl Impact {
         }
     }
 
-    fn color(self) -> Color {
+    fn color(self, colors: Palette) -> Color {
         match self {
-            Self::Low => GOOD,
-            Self::Elevated => WARNING,
-            Self::Critical => CRITICAL,
-            Self::Unknown => MUTED,
+            Self::Low => colors.good,
+            Self::Elevated => colors.warning,
+            Self::Critical => colors.critical,
+            Self::Unknown => colors.muted,
         }
     }
 }
@@ -400,35 +414,35 @@ fn ago(at: chrono::DateTime<chrono::Local>) -> String {
     }
 }
 
-fn full_detail_lines(event: &OomEvent) -> Vec<Line<'static>> {
+fn full_detail_lines(event: &OomEvent, colors: Palette) -> Vec<Line<'static>> {
     let mut lines = vec![
-        full_row("Victim", format!("{} (PID {})", event.victim_name, event.victim_pid)),
-        full_row("Impact", impact(event).label()),
-        full_row("Scope", scope_label(event)),
-        full_row("When", when(event)),
-        full_row("UID", event.uid.map(|id| id.to_string()).unwrap_or_else(|| MISSING.to_string())),
-        full_row("OOM score adj", event.oom_score_adj.map(|value| value.to_string()).unwrap_or_else(|| MISSING.to_string())),
-        full_row("Workload", workload(event)),
-        full_row("Cgroup", present(event.cgroup.clone())),
-        full_row("Limit cgroup", present(event.limit_cgroup.clone())),
-        full_row("Constraint", present(event.constraint.clone())),
-        full_row("Trigger", present(event.trigger_process.clone())),
-        full_row("Allocation", allocation(event)),
+        full_row("Victim", format!("{} (PID {})", event.victim_name, event.victim_pid), colors),
+        full_row("Impact", impact(event).label(), colors),
+        full_row("Scope", scope_label(event), colors),
+        full_row("When", when(event), colors),
+        full_row("UID", event.uid.map(|id| id.to_string()).unwrap_or_else(|| MISSING.to_string()), colors),
+        full_row("OOM score adj", event.oom_score_adj.map(|value| value.to_string()).unwrap_or_else(|| MISSING.to_string()), colors),
+        full_row("Workload", workload(event), colors),
+        full_row("Cgroup", present(event.cgroup.clone()), colors),
+        full_row("Limit cgroup", present(event.limit_cgroup.clone()), colors),
+        full_row("Constraint", present(event.constraint.clone()), colors),
+        full_row("Trigger", present(event.trigger_process.clone()), colors),
+        full_row("Allocation", allocation(event), colors),
         Line::from(""),
-        full_row("RSS total", exact_memory(event.rss_total_kb())),
-        full_row("Anonymous RSS", exact_memory(event.anon_rss_kb)),
-        full_row("File RSS", exact_memory(event.file_rss_kb)),
-        full_row("Shared RSS", exact_memory(event.shmem_rss_kb)),
-        full_row("Page tables", exact_memory(event.pgtables_kb)),
-        full_row("Total virtual", exact_memory(event.total_vm_kb)),
-        full_row("Machine RAM", exact_memory(event.mem.as_ref().and_then(|m| m.total_ram_kb))),
-        full_row("RAM share", share_of_ram(event)),
-        full_row("Reaper", reaper(event)),
+        full_row("RSS total", exact_memory(event.rss_total_kb()), colors),
+        full_row("Anonymous RSS", exact_memory(event.anon_rss_kb), colors),
+        full_row("File RSS", exact_memory(event.file_rss_kb), colors),
+        full_row("Shared RSS", exact_memory(event.shmem_rss_kb), colors),
+        full_row("Page tables", exact_memory(event.pgtables_kb), colors),
+        full_row("Total virtual", exact_memory(event.total_vm_kb), colors),
+        full_row("Machine RAM", exact_memory(event.mem.as_ref().and_then(|m| m.total_ram_kb)), colors),
+        full_row("RAM share", share_of_ram(event), colors),
+        full_row("Reaper", reaper(event), colors),
         Line::from(""),
-        Line::styled(" Process snapshot", Style::default().fg(CYAN).add_modifier(Modifier::BOLD)),
+        Line::styled(" Process snapshot", Style::default().fg(colors.accent).add_modifier(Modifier::BOLD)),
     ];
     if event.processes.is_empty() {
-        lines.push(Line::styled(format!("  {MISSING}"), Style::default().fg(MUTED)));
+        lines.push(Line::styled(format!("  {MISSING}"), Style::default().fg(colors.muted)));
     } else {
         for process in event.top_consumers(usize::MAX) {
             lines.push(Line::from(format!(
@@ -442,10 +456,10 @@ fn full_detail_lines(event: &OomEvent) -> Vec<Line<'static>> {
     lines
 }
 
-fn full_row(label: &str, value: impl Into<String>) -> Line<'static> {
+fn full_row(label: &str, value: impl Into<String>, colors: Palette) -> Line<'static> {
     Line::from(vec![
-        Span::styled(format!(" {label:<16}"), Style::default().fg(MUTED).add_modifier(Modifier::BOLD)),
-        Span::styled(value.into(), Style::default().fg(TEXT)),
+        Span::styled(format!(" {label:<16}"), Style::default().fg(colors.muted).add_modifier(Modifier::BOLD)),
+        Span::styled(value.into(), Style::default().fg(colors.text)),
     ])
 }
 

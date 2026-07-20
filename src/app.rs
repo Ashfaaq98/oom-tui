@@ -9,19 +9,42 @@ pub enum FocusPane {
     Evidence,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Theme {
+    Midnight,
+    Nord,
+    Gruvbox,
+}
+
+impl Theme {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Midnight => Self::Nord,
+            Self::Nord => Self::Gruvbox,
+            Self::Gruvbox => Self::Midnight,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Midnight => "MIDNIGHT",
+            Self::Nord => "NORD",
+            Self::Gruvbox => "GRUVBOX",
+        }
+    }
+}
+
 pub struct App {
     pub events: Vec<OomEvent>,
     pub list_state: ListState,
     pub source_description: String,
-    pub show_raw: bool,
-    /// Scroll offset within the raw-log pane. Without this the pane silently
-    /// truncates long events, which defeats its whole purpose as the escape
-    /// hatch for checking the parse.
+    /// Scroll offset within the persistent raw-evidence pane.
     pub raw_scroll: u16,
     pub detail_scroll: u16,
     pub focus: FocusPane,
+    pub theme: Theme,
     pub status: Option<String>,
-    /// Kept so `R` can re-query the exact same source, including a `--file`
+    /// Kept so `r` can re-query the exact same source, including a `--file`
     /// path or a `--boot`/`--since` window.
     pub source_options: SourceOptions,
     /// Set when the log source could not honour the requested filters.
@@ -43,10 +66,10 @@ impl App {
             events,
             list_state,
             source_description,
-            show_raw: false,
             raw_scroll: 0,
             detail_scroll: 0,
             focus: FocusPane::Incidents,
+            theme: Theme::Midnight,
             status: None,
             source_options,
             warning,
@@ -84,11 +107,6 @@ impl App {
         self.detail_scroll = 0;
     }
 
-    pub fn toggle_raw(&mut self) {
-        self.show_raw = !self.show_raw;
-        self.raw_scroll = 0;
-    }
-
     pub fn focus_next(&mut self) {
         self.focus = match self.focus {
             FocusPane::Incidents => FocusPane::Details,
@@ -103,6 +121,11 @@ impl App {
 
     pub fn focus_evidence(&mut self) {
         self.focus = FocusPane::Evidence;
+    }
+
+    pub fn cycle_theme(&mut self) {
+        self.theme = self.theme.next();
+        self.status = Some(format!("theme — {}", self.theme.label().to_ascii_lowercase()));
     }
 
     pub fn scroll_raw(&mut self, delta: i32) {
@@ -165,20 +188,13 @@ mod tests {
     }
 
     #[test]
-    fn raw_evidence_resets_when_it_is_reopened() {
+    fn evidence_and_details_have_independent_scroll_positions() {
         let mut app = app();
-        app.toggle_raw();
         app.scroll_raw(1);
-        assert!(app.show_raw);
         assert_eq!(app.raw_scroll, 1);
 
         app.scroll_details(1);
         assert_eq!(app.detail_scroll, 1);
-        app.toggle_raw();
-        assert!(!app.show_raw);
-        app.toggle_raw();
-        assert!(app.show_raw);
-        assert_eq!(app.raw_scroll, 0);
     }
 
     #[test]
@@ -203,5 +219,17 @@ mod tests {
         assert_eq!(app.focus, FocusPane::Evidence);
         app.focus_next();
         assert_eq!(app.focus, FocusPane::Incidents);
+    }
+
+    #[test]
+    fn themes_cycle_through_every_available_palette() {
+        let mut app = app();
+        assert_eq!(app.theme, Theme::Midnight);
+        app.cycle_theme();
+        assert_eq!(app.theme, Theme::Nord);
+        app.cycle_theme();
+        assert_eq!(app.theme, Theme::Gruvbox);
+        app.cycle_theme();
+        assert_eq!(app.theme, Theme::Midnight);
     }
 }
