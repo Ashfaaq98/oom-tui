@@ -34,11 +34,6 @@ fn palette(theme: Theme) -> Palette {
             muted: Color::Rgb(148, 163, 184), text: Color::Rgb(226, 232, 240), selection: Color::Rgb(59, 130, 246),
             accent: Color::Rgb(34, 211, 238), critical: Color::Rgb(248, 113, 113), warning: Color::Rgb(251, 191, 36), good: Color::Rgb(74, 222, 128),
         },
-        Theme::Nord => Palette {
-            surface: Color::Rgb(46, 52, 64), panel: Color::Rgb(59, 66, 82), border: Color::Rgb(129, 161, 193),
-            muted: Color::Rgb(180, 190, 205), text: Color::Rgb(236, 239, 244), selection: Color::Rgb(94, 129, 172),
-            accent: Color::Rgb(136, 192, 208), critical: Color::Rgb(191, 97, 106), warning: Color::Rgb(235, 203, 139), good: Color::Rgb(163, 190, 140),
-        },
         Theme::Gruvbox => Palette {
             surface: Color::Rgb(40, 40, 40), panel: Color::Rgb(60, 56, 54), border: Color::Rgb(146, 131, 116),
             muted: Color::Rgb(168, 153, 132), text: Color::Rgb(235, 219, 178), selection: Color::Rgb(69, 133, 136),
@@ -64,7 +59,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         let root = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(3),
+                Constraint::Length(4),
                 Constraint::Length(timeline),
                 Constraint::Min(0),
                 Constraint::Length(2),
@@ -140,8 +135,19 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
             Style::default().fg(colors.muted),
         ),
     ]);
+    let device_width = area.width.saturating_sub(12) as usize / 4;
+    let device = Line::from(vec![
+        Span::styled(" ", Style::default()),
+        Span::styled(truncate_to_width(&app.device.ram, device_width), Style::default().fg(colors.accent)),
+        Span::styled("  │  ", Style::default().fg(colors.border)),
+        Span::styled(truncate_to_width(&app.device.cpu, device_width), Style::default().fg(colors.text)),
+        Span::styled("  │  ", Style::default().fg(colors.border)),
+        Span::styled(truncate_to_width(&app.device.gpu, device_width), Style::default().fg(colors.text)),
+        Span::styled("  │  ", Style::default().fg(colors.border)),
+        Span::styled(truncate_to_width(&app.device.os, device_width), Style::default().fg(colors.muted)),
+    ]);
     f.render_widget(
-        Paragraph::new(vec![title, meta])
+        Paragraph::new(vec![title, meta, device])
             .style(Style::default().bg(colors.panel))
             .block(Block::default().borders(Borders::BOTTOM).border_style(Style::default().fg(colors.border))),
         area,

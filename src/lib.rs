@@ -9,5 +9,6 @@ pub mod model;
 pub mod parser;
 pub mod report;
 pub mod source;
+pub mod system;
 pub mod timestamp;
 pub mod ui;

@@ -87,7 +87,7 @@ oom-tui [OPTIONS]
 | `↑`/`k`, `↓`/`j` | Select an incident or scroll the focused details/evidence pane. |
 | `PgUp`/`PgDn`, `g`/`G` | Scroll raw evidence or full details. |
 | `r` | Reload the selected source. |
-| `t` | Cycle Midnight, Nord, and Gruvbox themes. |
+| `t` | Cycle Midnight and Gruvbox themes. |
 | `q`/`Esc` | Quit. |
 
 ## Examples

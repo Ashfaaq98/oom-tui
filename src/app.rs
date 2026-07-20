@@ -1,5 +1,6 @@
 use crate::model::OomEvent;
 use crate::source::SourceOptions;
+use crate::system::DeviceInfo;
 use ratatui::widgets::ListState;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -12,15 +13,13 @@ pub enum FocusPane {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Theme {
     Midnight,
-    Nord,
     Gruvbox,
 }
 
 impl Theme {
     pub fn next(self) -> Self {
         match self {
-            Self::Midnight => Self::Nord,
-            Self::Nord => Self::Gruvbox,
+            Self::Midnight => Self::Gruvbox,
             Self::Gruvbox => Self::Midnight,
         }
     }
@@ -28,7 +27,6 @@ impl Theme {
     pub fn label(self) -> &'static str {
         match self {
             Self::Midnight => "MIDNIGHT",
-            Self::Nord => "NORD",
             Self::Gruvbox => "GRUVBOX",
         }
     }
@@ -43,6 +41,7 @@ pub struct App {
     pub detail_scroll: u16,
     pub focus: FocusPane,
     pub theme: Theme,
+    pub device: DeviceInfo,
     pub status: Option<String>,
     /// Kept so `r` can re-query the exact same source, including a `--file`
     /// path or a `--boot`/`--since` window.
@@ -70,6 +69,7 @@ impl App {
             detail_scroll: 0,
             focus: FocusPane::Incidents,
             theme: Theme::Midnight,
+            device: DeviceInfo::detect(),
             status: None,
             source_options,
             warning,
@@ -225,8 +225,6 @@ mod tests {
     fn themes_cycle_through_every_available_palette() {
         let mut app = app();
         assert_eq!(app.theme, Theme::Midnight);
-        app.cycle_theme();
-        assert_eq!(app.theme, Theme::Nord);
         app.cycle_theme();
         assert_eq!(app.theme, Theme::Gruvbox);
         app.cycle_theme();
