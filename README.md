@@ -83,9 +83,9 @@ oom-tui [OPTIONS]
 
 | Key | Action |
 | --- | --- |
-| `↑`/`k`, `↓`/`j` | Select an incident; scroll raw evidence or full details when open. |
-| `l` | Toggle raw kernel lines. |
-| `i` | Toggle complete incident details. |
+| `Tab` | Cycle focus between incidents, details, and raw evidence. |
+| `↑`/`k`, `↓`/`j` | Select an incident or scroll the focused details/evidence pane. |
+| `l` | Focus raw kernel evidence. |
 | `PgUp`/`PgDn`, `g`/`G` | Scroll raw evidence or full details. |
 | `R` | Reload the selected source. |
 | `q`/`Esc` | Quit. |

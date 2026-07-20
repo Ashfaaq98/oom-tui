@@ -2,17 +2,24 @@ use crate::model::OomEvent;
 use crate::source::SourceOptions;
 use ratatui::widgets::ListState;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FocusPane {
+    Incidents,
+    Details,
+    Evidence,
+}
+
 pub struct App {
     pub events: Vec<OomEvent>,
     pub list_state: ListState,
     pub source_description: String,
     pub show_raw: bool,
-    pub show_details: bool,
     /// Scroll offset within the raw-log pane. Without this the pane silently
     /// truncates long events, which defeats its whole purpose as the escape
     /// hatch for checking the parse.
     pub raw_scroll: u16,
     pub detail_scroll: u16,
+    pub focus: FocusPane,
     pub status: Option<String>,
     /// Kept so `R` can re-query the exact same source, including a `--file`
     /// path or a `--boot`/`--since` window.
@@ -37,9 +44,9 @@ impl App {
             list_state,
             source_description,
             show_raw: false,
-            show_details: false,
             raw_scroll: 0,
             detail_scroll: 0,
+            focus: FocusPane::Incidents,
             status: None,
             source_options,
             warning,
@@ -79,14 +86,23 @@ impl App {
 
     pub fn toggle_raw(&mut self) {
         self.show_raw = !self.show_raw;
-        self.show_details = false;
         self.raw_scroll = 0;
     }
 
-    pub fn toggle_details(&mut self) {
-        self.show_details = !self.show_details;
-        self.show_raw = false;
-        self.detail_scroll = 0;
+    pub fn focus_next(&mut self) {
+        self.focus = match self.focus {
+            FocusPane::Incidents => FocusPane::Details,
+            FocusPane::Details => FocusPane::Evidence,
+            FocusPane::Evidence => FocusPane::Incidents,
+        };
+    }
+
+    pub fn focus_details(&mut self) {
+        self.focus = FocusPane::Details;
+    }
+
+    pub fn focus_evidence(&mut self) {
+        self.focus = FocusPane::Evidence;
     }
 
     pub fn scroll_raw(&mut self, delta: i32) {
@@ -149,23 +165,19 @@ mod tests {
     }
 
     #[test]
-    fn raw_and_details_modes_are_exclusive_and_reset_their_scroll() {
+    fn raw_evidence_resets_when_it_is_reopened() {
         let mut app = app();
         app.toggle_raw();
         app.scroll_raw(1);
         assert!(app.show_raw);
         assert_eq!(app.raw_scroll, 1);
 
-        app.toggle_details();
-        assert!(app.show_details);
-        assert!(!app.show_raw);
-        assert_eq!(app.detail_scroll, 0);
-
         app.scroll_details(1);
         assert_eq!(app.detail_scroll, 1);
         app.toggle_raw();
+        assert!(!app.show_raw);
+        app.toggle_raw();
         assert!(app.show_raw);
-        assert!(!app.show_details);
         assert_eq!(app.raw_scroll, 0);
     }
 
@@ -179,5 +191,17 @@ mod tests {
         app.select_next();
         assert_eq!(app.raw_scroll, 0);
         assert_eq!(app.detail_scroll, 0);
+    }
+
+    #[test]
+    fn focus_cycles_through_all_master_detail_panes() {
+        let mut app = app();
+        assert_eq!(app.focus, FocusPane::Incidents);
+        app.focus_next();
+        assert_eq!(app.focus, FocusPane::Details);
+        app.focus_next();
+        assert_eq!(app.focus, FocusPane::Evidence);
+        app.focus_next();
+        assert_eq!(app.focus, FocusPane::Incidents);
     }
 }

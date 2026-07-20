@@ -1,9 +1,12 @@
-use crate::{app::App, model::OomEvent};
+use crate::{
+    app::{App, FocusPane},
+    model::OomEvent,
+};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Cell, List, ListItem, Paragraph, Row, Table, Wrap},
+    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
     Frame,
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -22,22 +25,31 @@ const MISSING: &str = "— not reported in log";
 
 pub fn draw(f: &mut Frame, app: &mut App) {
     let area = f.size();
-    let timeline = timeline_height(area.height, app.events.len());
-    let root = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3),
-            Constraint::Length(timeline),
-            Constraint::Min(0),
-            Constraint::Length(2),
-        ])
-        .split(area);
-
     f.render_widget(Block::default().style(Style::default().bg(SURFACE)), area);
-    draw_header(f, root[0], app);
-    draw_timeline(f, root[1], app);
-    draw_detail(f, root[2], app);
-    draw_footer(f, root[3], app);
+    if area.width >= 90 {
+        let root = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(4), Constraint::Min(0), Constraint::Length(2)])
+            .split(area);
+        draw_header(f, root[0], app);
+        draw_master_detail(f, root[1], app);
+        draw_footer(f, root[2], app);
+    } else {
+        let timeline = timeline_height(area.height, app.events.len());
+        let root = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Length(timeline),
+                Constraint::Min(0),
+                Constraint::Length(2),
+            ])
+            .split(area);
+        draw_header(f, root[0], app);
+        draw_incident_list(f, root[1], app, "INCIDENT TIMELINE  ·  newest last");
+        draw_detail(f, root[2], app);
+        draw_footer(f, root[3], app);
+    }
 }
 
 fn timeline_height(terminal_height: u16, events: usize) -> u16 {
@@ -68,29 +80,48 @@ fn panel_title(title: impl Into<String>) -> Line<'static> {
 
 fn draw_header(f: &mut Frame, area: Rect, app: &App) {
     let count = app.events.len();
+    let cgroup_count = app.events.iter().filter(|event| event.memcg_kill).count();
+    let host_count = count.saturating_sub(cgroup_count);
+    let selected = app.list_state.selected().map(|index| index + 1).unwrap_or(0);
     let title = Line::from(vec![
         Span::styled(" OOM", Style::default().fg(CRITICAL).add_modifier(Modifier::BOLD)),
         Span::styled(
             " // INCIDENT CONSOLE",
             Style::default().fg(TEXT).add_modifier(Modifier::BOLD),
         ),
+        Span::styled("  │  ", Style::default().fg(MUTED)),
+        Span::styled(
+            format!("v{}", env!("CARGO_PKG_VERSION")),
+            Style::default().fg(CYAN).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("  │  ", Style::default().fg(MUTED)),
+        Span::styled("KERNEL LOG FORENSICS", Style::default().fg(MUTED)),
     ]);
-    let source_width = area.width.saturating_sub(18) as usize;
     let meta = Line::from(vec![
         Span::styled(
-            format!(" {count} incident{} ", if count == 1 { "" } else { "s" }),
+            format!(" {count} INCIDENT{} ", if count == 1 { "" } else { "S" }),
             Style::default().fg(CYAN),
         ),
-        Span::styled("•  ", Style::default().fg(MUTED)),
+        Span::styled(format!(" {cgroup_count} CGROUP "), Style::default().fg(CYAN)),
+        Span::styled("│", Style::default().fg(BORDER)),
+        Span::styled(format!(" {host_count} HOST-WIDE "), Style::default().fg(CYAN)),
+        Span::styled("│", Style::default().fg(BORDER)),
+        Span::styled(format!(" SELECTED {selected}/{count} "), Style::default().fg(TEXT)),
+        Span::styled("│", Style::default().fg(BORDER)),
         Span::styled(
-            truncate_to_width(&app.source_description, source_width),
+            truncate_to_width(&app.source_description, area.width.saturating_sub(56) as usize),
             Style::default().fg(MUTED),
         ),
     ]);
-    f.render_widget(Paragraph::new(vec![title, meta]).style(Style::default().bg(SURFACE)), area);
+    f.render_widget(
+        Paragraph::new(vec![title, meta])
+            .style(Style::default().bg(PANEL))
+            .block(Block::default().borders(Borders::BOTTOM).border_style(Style::default().fg(BORDER))),
+        area,
+    );
 }
 
-fn draw_timeline(f: &mut Frame, area: Rect, app: &mut App) {
+fn draw_incident_list(f: &mut Frame, area: Rect, app: &mut App, title: &str) {
     if app.events.is_empty() {
         let message = vec![
             Line::styled("No OOM kills found", Style::default().fg(GOOD).add_modifier(Modifier::BOLD)),
@@ -98,7 +129,7 @@ fn draw_timeline(f: &mut Frame, area: Rect, app: &mut App) {
         ];
         f.render_widget(
             Paragraph::new(message)
-                .block(panel(panel_title("INCIDENT TIMELINE")))
+                .block(panel(panel_title(title)))
                 .wrap(Wrap { trim: true }),
             area,
         );
@@ -112,10 +143,55 @@ fn draw_timeline(f: &mut Frame, area: Rect, app: &mut App) {
         .map(|event| timeline_item(event, item_width))
         .collect();
     let list = List::new(items)
-        .block(panel(panel_title("INCIDENT TIMELINE  ·  newest last")))
-        .highlight_style(Style::default().bg(BLUE).fg(TEXT).add_modifier(Modifier::BOLD))
+        .block(panel(panel_title(title)))
+        .highlight_style(
+            Style::default()
+                .bg(if app.focus == FocusPane::Incidents { BLUE } else { PANEL })
+                .fg(TEXT)
+                .add_modifier(Modifier::BOLD),
+        )
         .highlight_symbol("▌ ");
     f.render_stateful_widget(list, area, &mut app.list_state);
+}
+
+fn draw_master_detail(f: &mut Frame, area: Rect, app: &mut App) {
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(34), Constraint::Percentage(66)])
+        .split(area);
+    draw_incident_list(f, columns[0], app, "INCIDENTS  ·  j/k select");
+
+    let right = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(55), Constraint::Percentage(45)])
+        .split(columns[1]);
+    draw_detail(f, right[0], app);
+    draw_raw_evidence(f, right[1], app);
+}
+
+fn draw_raw_evidence(f: &mut Frame, area: Rect, app: &App) {
+    let Some(event) = app.selected() else {
+        f.render_widget(
+            Paragraph::new("Select an incident to inspect its unmodified kernel evidence.")
+                .style(Style::default().fg(MUTED))
+                .block(panel(panel_title("RAW KERNEL EVIDENCE"))),
+            area,
+        );
+        return;
+    };
+    let title = if app.focus == FocusPane::Evidence {
+        "RAW KERNEL EVIDENCE  ·  FOCUSED  ·  j/k scroll"
+    } else {
+        "RAW KERNEL EVIDENCE  ·  l or Tab to focus"
+    };
+    f.render_widget(
+        Paragraph::new(event.raw_lines.join("\n"))
+            .block(panel(panel_title(title)))
+            .style(Style::default().fg(TEXT))
+            .scroll((app.raw_scroll, 0))
+            .wrap(Wrap { trim: false }),
+        area,
+    );
 }
 
 fn timeline_item(event: &OomEvent, width: usize) -> ListItem<'static> {
@@ -164,179 +240,27 @@ fn draw_detail(f: &mut Frame, area: Rect, app: &App) {
         return;
     }
 
-    if app.show_details {
-        f.render_widget(
-            Paragraph::new(full_detail_lines(event))
-                .block(panel(panel_title("INCIDENT DETAILS  ·  i to return")))
-                .style(Style::default().fg(TEXT))
-                .scroll((app.detail_scroll, 0))
-                .wrap(Wrap { trim: false }),
-            area,
-        );
-        return;
-    }
-
-    let peers = peer_count(event);
-    match area.width {
-        110.. => draw_wide_detail(f, area, event, peers),
-        80..=109 => draw_medium_detail(f, area, event, peers),
-        _ => draw_narrow_detail(f, area, event, peers),
-    }
-}
-
-fn draw_wide_detail(f: &mut Frame, area: Rect, event: &OomEvent, peers: usize) {
-    let columns = if peers == 0 {
-        Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(area)
+    let title = if app.focus == FocusPane::Details {
+        "INCIDENT DETAILS  ·  FOCUSED  ·  j/k scroll"
     } else {
-        Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Percentage(36),
-                Constraint::Percentage(28),
-                Constraint::Percentage(36),
-            ])
-            .split(area)
+        "INCIDENT DETAILS  ·  Tab to focus"
     };
-    draw_context(f, columns[0], event);
-    draw_memory(f, columns[1], event);
-    if peers > 0 {
-        draw_top_consumers(f, columns[2], event);
-    }
-}
-
-fn draw_medium_detail(f: &mut Frame, area: Rect, event: &OomEvent, peers: usize) {
-    if peers == 0 {
-        draw_wide_detail(f, area, event, peers);
-        return;
-    }
-    let rows = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(58), Constraint::Percentage(42)])
-        .split(area);
-    let columns = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(54), Constraint::Percentage(46)])
-        .split(rows[0]);
-    draw_context(f, columns[0], event);
-    draw_memory(f, columns[1], event);
-    draw_top_consumers(f, rows[1], event);
-}
-
-fn draw_narrow_detail(f: &mut Frame, area: Rect, event: &OomEvent, peers: usize) {
-    if peers > 0 {
-        let rows =
-        Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(55), Constraint::Percentage(45)])
-            .split(area);
-        draw_compact_summary(f, rows[0], event);
-        draw_top_consumers(f, rows[1], event);
-    } else {
-        draw_compact_summary(f, area, event);
-    }
-}
-
-fn draw_context(f: &mut Frame, area: Rect, event: &OomEvent) {
-    let value_width = detail_value_width(area, 12);
-    let rows = vec![
-        detail_row("VICTIM", format!("{} (PID {})", event.victim_name, event.victim_pid), TEXT, value_width),
-        detail_row("SCOPE", scope_label(event), CYAN, value_width),
-        detail_row("WHEN", when(event), TEXT, value_width),
-        detail_row("WORKLOAD", workload(event), CYAN, value_width),
-        detail_row("TRIGGER", present(event.trigger_process.clone()), TEXT, value_width),
-        detail_row("REAPER", reaper(event), if event.reaped { GOOD } else { WARNING }, value_width),
-        detail_row("TASK DUMP", task_dump_state(event), MUTED, value_width),
-    ];
-    f.render_widget(detail_table(rows, "INCIDENT CONTEXT", 12), area);
-}
-
-fn draw_memory(f: &mut Frame, area: Rect, event: &OomEvent) {
-    let value_width = detail_value_width(area, 14);
-    let impact = impact(event);
-    let rows = vec![
-        detail_row("RSS TOTAL", memory(event.rss_total_kb()), impact.color(), value_width),
-        detail_row("ANONYMOUS", memory(event.anon_rss_kb), TEXT, value_width),
-        detail_row("FILE RSS", memory(event.file_rss_kb), TEXT, value_width),
-        detail_row("SHMEM RSS", memory(event.shmem_rss_kb), TEXT, value_width),
-        detail_row("PAGE TABLES", memory(event.pgtables_kb), TEXT, value_width),
-        detail_row("RAM SHARE", share_of_ram(event), impact.color(), value_width),
-        detail_row(
-            "MACHINE RAM",
-            memory(event.mem.as_ref().and_then(|m| m.total_ram_kb)),
-            MUTED,
-            value_width,
-        ),
-    ];
-    f.render_widget(detail_table(rows, "MEMORY", 14), area);
-}
-
-fn draw_compact_summary(f: &mut Frame, area: Rect, event: &OomEvent) {
-    let value_width = detail_value_width(area, 10);
-    let impact = impact(event);
-    let rows = vec![
-        detail_row("VICTIM", format!("{} (PID {})", event.victim_name, event.victim_pid), TEXT, value_width),
-        detail_row("IMPACT", impact.label().to_string(), impact.color(), value_width),
-        detail_row("SCOPE", scope_short(event).to_string(), CYAN, value_width),
-        detail_row("RSS", memory(event.rss_total_kb()), impact.color(), value_width),
-        detail_row("WORKLOAD", workload(event), CYAN, value_width),
-        detail_row("REAPER", reaper(event), if event.reaped { GOOD } else { WARNING }, value_width),
-    ];
-    f.render_widget(detail_table(rows, "INCIDENT SUMMARY  ·  i for complete details", 10), area);
-}
-
-fn draw_top_consumers(f: &mut Frame, area: Rect, event: &OomEvent) {
-    let visible = area.height.saturating_sub(2) as usize;
-    let name_width = area.width.saturating_sub(15).max(8) as usize;
-    let mut rows: Vec<Row<'static>> = Vec::new();
-    for process in event
-        .top_consumers(visible.min(20))
-        .into_iter()
-        .filter(|process| process.pid != event.victim_pid)
-    {
-        rows.push(Row::new(vec![
-            Cell::from(truncate_to_width(&process.name, name_width)).style(Style::default().fg(TEXT)),
-            Cell::from(format!("{:.0} MiB", process.rss_kb as f64 / 1024.0))
-                .style(Style::default().fg(TEXT)),
-        ]));
-    }
-    let title = match event.victim_was_largest() {
-        Some(false) => "OTHER CONSUMERS  ·  victim was not largest",
-        _ => "OTHER CONSUMERS",
-    };
-    let table = Table::new(rows, [Constraint::Min(8), Constraint::Length(10)])
-        .block(panel(panel_title(title)))
-        .column_spacing(1)
-        .style(Style::default().fg(TEXT).bg(SURFACE));
-    f.render_widget(table, area);
-}
-
-fn detail_table(rows: Vec<Row<'static>>, title: impl Into<String>, label_width: u16) -> Table<'static> {
-    Table::new(rows, [Constraint::Length(label_width), Constraint::Min(8)])
-        .block(panel(panel_title(title)))
-        .column_spacing(1)
-        .style(Style::default().fg(TEXT).bg(SURFACE))
-}
-
-fn detail_row(label: &'static str, value: String, color: Color, width: usize) -> Row<'static> {
-    let color = if value == MISSING { MUTED } else { color };
-    Row::new(vec![
-        Cell::from(label).style(Style::default().fg(MUTED).add_modifier(Modifier::BOLD)),
-        Cell::from(truncate_to_width(&value, width)).style(Style::default().fg(color)),
-    ])
-}
-
-fn detail_value_width(area: Rect, label_width: u16) -> usize {
-    area.width.saturating_sub(label_width + 5).max(8) as usize
+    f.render_widget(
+        Paragraph::new(full_detail_lines(event))
+            .block(panel(panel_title(title)))
+            .style(Style::default().fg(TEXT))
+            .scroll((app.detail_scroll, 0))
+            .wrap(Wrap { trim: false }),
+        area,
+    );
 }
 
 fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
     let mut help = vec![
-        shortcut("↑/k", "navigate"),
+        shortcut("Tab", focus_label(app.focus)),
+        shortcut("j/k", "move/scroll"),
         shortcut("i", "details"),
-        shortcut("l", "raw"),
+        shortcut("l", "evidence"),
         shortcut("R", "reload"),
         shortcut("q", "quit"),
     ];
@@ -350,6 +274,14 @@ fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
             .alignment(Alignment::Center),
         area,
     );
+}
+
+fn focus_label(focus: FocusPane) -> &'static str {
+    match focus {
+        FocusPane::Incidents => "incidents",
+        FocusPane::Details => "details",
+        FocusPane::Evidence => "evidence",
+    }
 }
 
 fn shortcut(key: &'static str, label: &'static str) -> Span<'static> {
@@ -420,22 +352,6 @@ fn workload(event: &OomEvent) -> String {
             .and_then(crate::container::identify)
             .map(|id| id.summary()),
     )
-}
-
-fn task_dump_state(event: &OomEvent) -> String {
-    match (event.processes.len(), peer_count(event)) {
-        (0, _) => "not captured in log".to_string(),
-        (_, 0) => "victim only".to_string(),
-        (_, peers) => format!("{peers} peer process{}", if peers == 1 { "" } else { "es" }),
-    }
-}
-
-fn peer_count(event: &OomEvent) -> usize {
-    event
-        .processes
-        .iter()
-        .filter(|process| process.pid != event.victim_pid)
-        .count()
 }
 
 fn reaper(event: &OomEvent) -> String {
@@ -642,15 +558,21 @@ mod tests {
         for (width, height) in [(140, 40), (100, 30), (70, 24)] {
             let output = render(width, height, event(true, true));
             assert!(output.contains("INCIDENT"));
-            assert!(output.contains("OTHER CONSUMERS"));
+            assert!(output.contains("INCIDENT DETAILS"));
         }
     }
 
     #[test]
-    fn victim_only_dump_has_no_redundant_consumer_panel() {
+    fn wide_layout_keeps_navigation_and_raw_evidence_visible() {
+        let output = render(140, 40, event(true, true));
+        assert!(output.contains("SELECTED 1/1"));
+        assert!(output.contains("RAW KERNEL EVIDENCE"));
+        assert!(output.contains("raw evidence"));
+    }
+
+    #[test]
+    fn incident_details_keep_missing_fields_explicit() {
         let output = render(140, 40, event(false, false));
-        assert!(output.contains("victim only"));
-        assert!(!output.contains("OTHER CONSUMERS"));
         assert!(output.contains("not reported"));
     }
 }
