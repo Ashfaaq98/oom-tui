@@ -8,7 +8,7 @@ coding substitutes for real logs from real machines.
 
 If `oom-tui` misparses an event, or shows nothing when you know a kill
 happened, please [open an issue][issues] with the raw lines. Redact hostnames
-and anything sensitive first — the structure is what matters. Every such report
+and anything sensitive first; the structure is what matters. Every such report
 becomes a permanent test fixture.
 
 [issues]: https://github.com/Ashfaaq98/oom-tui/issues/new/choose
@@ -52,7 +52,7 @@ CI runs exactly these, plus a build against the minimum supported Rust version
 
 **Every parser change needs a fixture.** Add the real log line to the tests in
 `src/parser.rs`. Those tests double as documentation of what the kernel
-actually emits — keep them realistic rather than minimal.
+actually emits, so keep them realistic rather than minimal.
 
 **Never invent data.** If a field is absent from the log, it is `None`. A
 plausible-looking guess is worse than a gap, because someone is making an
@@ -72,7 +72,7 @@ freely. Renaming or removing a field there is a breaking change.
 
 This is a forensics viewer for logs that already exist. It is deliberately not
 a memory monitor, a `top`/`htop` clone, a daemon, an alerting system, or an
-eBPF tracer. Features that pull in that direction will likely be declined —
+eBPF tracer. Features that pull in that direction will likely be declined;
 please open an issue to discuss before building something large.
 
 ## License
