@@ -25,6 +25,8 @@ jobs:
       # signal, and a skipped test step tells you nothing.
       - name: Test
         run: cargo test --all-features
+      - name: Installer fixtures
+        run: sh tests/install.sh
       - name: Format
         run: cargo fmt --all --check
       - name: Clippy

@@ -32,10 +32,47 @@ The victim is not necessarily the root cause. The task dump is a snapshot of pro
 
 ## Install
 
-Download a static Linux binary from [GitHub Releases](https://github.com/Ashfaaq98/oom-tui/releases):
+The recommended Linux install uses the verified release installer. It selects
+the right static binary for `x86_64` or `aarch64`, verifies its SHA-256
+checksum, and installs it to `~/.local/bin` without requiring `sudo`:
 
 ```bash
-curl -L https://github.com/Ashfaaq98/oom-tui/releases/latest/download/oom-tui-x86_64-unknown-linux-musl.tar.gz | tar xz
+curl -fsSL https://github.com/Ashfaaq98/oom-tui/releases/latest/download/install.sh | sh
+```
+
+Ensure `~/.local/bin` is on your `PATH`, then confirm the installed version:
+
+```bash
+oom-tui --version
+```
+
+Use `--system` to install to `/usr/local/bin` (the installer requests `sudo`
+when needed), `--update` to reinstall the latest version, and `--uninstall` to
+remove it:
+
+```bash
+curl -fsSL https://github.com/Ashfaaq98/oom-tui/releases/latest/download/install.sh | sh -s -- --system
+curl -fsSL https://github.com/Ashfaaq98/oom-tui/releases/latest/download/install.sh | sh -s -- --update
+curl -fsSL https://github.com/Ashfaaq98/oom-tui/releases/latest/download/install.sh | sh -s -- --uninstall
+```
+
+To install a specific release, use its tag in both places:
+
+```bash
+version=vX.Y.Z
+curl -fsSL "https://github.com/Ashfaaq98/oom-tui/releases/download/${version}/install.sh" | sh -s -- --version "$version"
+```
+
+For a manual install, download both the archive and its checksum before
+extracting it:
+
+```bash
+target=x86_64-unknown-linux-musl
+base="https://github.com/Ashfaaq98/oom-tui/releases/latest/download/oom-tui-${target}.tar.gz"
+curl -fLO "$base"
+curl -fLO "$base.sha256"
+sha256sum -c "$(basename "$base").sha256"
+tar xzf "$(basename "$base")"
 sudo install oom-tui-*/oom-tui /usr/local/bin/oom-tui
 ```
 
@@ -48,6 +85,14 @@ git clone https://github.com/Ashfaaq98/oom-tui
 cd oom-tui
 cargo build --release
 ./target/release/oom-tui --help
+```
+
+When working from a checkout, use `cargo run` to build and run that source
+tree directly. This avoids accidentally running an older `oom-tui` already
+installed elsewhere:
+
+```bash
+cargo run -- --file examples/sample-oom.log
 ```
 
 ## Quick start
@@ -84,10 +129,12 @@ oom-tui [OPTIONS]
 | Key | Action |
 | --- | --- |
 | `Tab` | Cycle focus between incidents, details, and raw evidence. |
-| `↑`/`k`, `↓`/`j` | Select an incident or scroll the focused details/evidence pane. |
+| `↑`/`↓` | Select an incident or scroll the focused details/evidence pane. |
 | `PgUp`/`PgDn`, `g`/`G` | Scroll raw evidence or full details. |
+| `←`/`→` | Scroll long raw-evidence lines horizontally. |
 | `r` | Reload the selected source. |
 | `t` | Cycle Midnight and Gruvbox themes. |
+| `?` | Open the keyboard reference. |
 | `q`/`Esc` | Quit. |
 
 ## Examples
@@ -141,9 +188,9 @@ This is a viewer for existing OOM evidence, not a memory monitor, daemon, alerti
 The minimum supported Rust version is 1.75.
 
 ```bash
-cargo fmt --all
-cargo clippy --all-targets -- -D warnings
-cargo test
+cargo fmt --all --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-features
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for parser fixtures, development conventions, and fuzzing guidance. If a real-world log is misparsed, please [open an issue](https://github.com/Ashfaaq98/oom-tui/issues/new/choose) with the relevant redacted kernel lines.

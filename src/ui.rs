@@ -1,17 +1,21 @@
 use crate::{
+    analysis::investigate,
     app::{App, FocusPane, Theme},
     model::OomEvent,
 };
 use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
+    widgets::{
+        Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
+        ScrollbarState, Wrap,
+    },
     Frame,
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-const MISSING: &str = "— not reported in log";
+const MISSING: &str = "— not reported by kernel";
 
 #[derive(Clone, Copy)]
 struct Palette {
@@ -91,6 +95,9 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         draw_detail(f, root[2], app, colors);
         draw_footer(f, root[3], app, colors);
     }
+    if app.help_visible {
+        draw_help(f, area, colors);
+    }
 }
 
 fn timeline_height(terminal_height: u16, events: usize) -> u16 {
@@ -124,12 +131,12 @@ fn panel_title(title: impl Into<String>, colors: Palette) -> Line<'static> {
 fn draw_header(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
     let count = app.events.len();
     let cgroup_count = app.events.iter().filter(|event| event.memcg_kill).count();
-    let host_count = count.saturating_sub(cgroup_count);
     let selected = app
         .list_state
         .selected()
         .map(|index| index + 1)
         .unwrap_or(0);
+    let selected_scope = app.selected().map(scope_short).unwrap_or("no incident");
     let title = Line::from(vec![
         Span::styled(
             " OOM",
@@ -138,7 +145,7 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
-            " // INCIDENT CONSOLE",
+            " INCIDENT CONSOLE",
             Style::default()
                 .fg(colors.text)
                 .add_modifier(Modifier::BOLD),
@@ -146,73 +153,41 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
         Span::styled("  │  ", Style::default().fg(colors.muted)),
         Span::styled(
             format!("v{}", env!("CARGO_PKG_VERSION")),
-            Style::default()
-                .fg(colors.accent)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(colors.muted),
         ),
-        Span::styled("  │  ", Style::default().fg(colors.muted)),
-        Span::styled(
-            app.theme.label(),
-            Style::default()
-                .fg(colors.accent)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled("  │  ", Style::default().fg(colors.muted)),
-        Span::styled("KERNEL LOG FORENSICS", Style::default().fg(colors.muted)),
     ]);
-    let meta = Line::from(vec![
-        Span::styled(
+    let context = Line::from(vec![
+        header_value(
             format!(" {count} INCIDENT{} ", if count == 1 { "" } else { "S" }),
-            Style::default().fg(colors.accent),
+            colors,
         ),
+        separator(colors),
+        header_value(format!(" SELECTED {selected}/{count} "), colors),
+        separator(colors),
+        header_value(format!(" {selected_scope} "), colors),
+        separator(colors),
         Span::styled(
             format!(" {cgroup_count} CGROUP "),
-            Style::default().fg(colors.accent),
+            Style::default().fg(colors.muted),
         ),
-        Span::styled("│", Style::default().fg(colors.border)),
+    ]);
+    let viewing = vec![
         Span::styled(
-            format!(" {host_count} HOST-WIDE "),
-            Style::default().fg(colors.accent),
+            " VIEWING: ",
+            Style::default()
+                .fg(colors.muted)
+                .add_modifier(Modifier::BOLD),
         ),
-        Span::styled("│", Style::default().fg(colors.border)),
-        Span::styled(
-            format!(" SELECTED {selected}/{count} "),
-            Style::default().fg(colors.text),
-        ),
-        Span::styled("│", Style::default().fg(colors.border)),
         Span::styled(
             truncate_to_width(
                 &app.source_description,
-                area.width.saturating_sub(56) as usize,
+                area.width.saturating_sub(12) as usize,
             ),
-            Style::default().fg(colors.muted),
-        ),
-    ]);
-    let device_width = area.width.saturating_sub(12) as usize / 4;
-    let device = Line::from(vec![
-        Span::styled(" ", Style::default()),
-        Span::styled(
-            truncate_to_width(&app.device.ram, device_width),
-            Style::default().fg(colors.accent),
-        ),
-        Span::styled("  │  ", Style::default().fg(colors.border)),
-        Span::styled(
-            truncate_to_width(&app.device.cpu, device_width),
             Style::default().fg(colors.text),
         ),
-        Span::styled("  │  ", Style::default().fg(colors.border)),
-        Span::styled(
-            truncate_to_width(&app.device.gpu, device_width),
-            Style::default().fg(colors.text),
-        ),
-        Span::styled("  │  ", Style::default().fg(colors.border)),
-        Span::styled(
-            truncate_to_width(&app.device.os, device_width),
-            Style::default().fg(colors.muted),
-        ),
-    ]);
+    ];
     f.render_widget(
-        Paragraph::new(vec![title, meta, device])
+        Paragraph::new(vec![title, context, Line::from(viewing)])
             .style(Style::default().bg(colors.panel))
             .block(
                 Block::default()
@@ -221,6 +196,19 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
             ),
         area,
     );
+}
+
+fn header_value(value: String, colors: Palette) -> Span<'static> {
+    Span::styled(
+        value,
+        Style::default()
+            .fg(colors.accent)
+            .add_modifier(Modifier::BOLD),
+    )
+}
+
+fn separator(colors: Palette) -> Span<'static> {
+    Span::styled("│", Style::default().fg(colors.border))
 }
 
 fn draw_incident_list(f: &mut Frame, area: Rect, app: &mut App, title: &str, colors: Palette) {
@@ -269,21 +257,25 @@ fn draw_incident_list(f: &mut Frame, area: Rect, app: &mut App, title: &str, col
 }
 
 fn draw_master_detail(f: &mut Frame, area: Rect, app: &mut App, colors: Palette) {
+    let left_width = if app.events.len() <= 4 { 28 } else { 34 };
     let columns = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(34), Constraint::Percentage(66)])
+        .constraints([
+            Constraint::Percentage(left_width),
+            Constraint::Percentage(100 - left_width),
+        ])
         .split(area);
-    draw_incident_list(f, columns[0], app, "INCIDENTS  ·  j/k select", colors);
+    draw_incident_list(f, columns[0], app, "INCIDENTS  ·  ↑/↓ select", colors);
 
     let right = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(55), Constraint::Percentage(45)])
+        .constraints([Constraint::Percentage(58), Constraint::Percentage(42)])
         .split(columns[1]);
     draw_detail(f, right[0], app, colors);
     draw_raw_evidence(f, right[1], app, colors);
 }
 
-fn draw_raw_evidence(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
+fn draw_raw_evidence(f: &mut Frame, area: Rect, app: &mut App, colors: Palette) {
     let Some(event) = app.selected() else {
         f.render_widget(
             Paragraph::new("Select an incident to inspect its unmodified kernel evidence.")
@@ -293,26 +285,46 @@ fn draw_raw_evidence(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
         );
         return;
     };
+    let raw_lines = event.raw_lines.clone();
+    let viewport_lines = area.height.saturating_sub(2);
+    let viewport_width = area.width.saturating_sub(2);
+    let max_width = raw_lines
+        .iter()
+        .map(|line| UnicodeWidthStr::width(line.as_str()))
+        .max()
+        .unwrap_or(0);
+    app.set_raw_scroll_limits(raw_lines.len(), viewport_lines, max_width, viewport_width);
     let title = if app.focus == FocusPane::Evidence {
-        "RAW KERNEL EVIDENCE  ·  FOCUSED  ·  j/k scroll"
+        "RAW KERNEL EVIDENCE  ·  FOCUSED  ·  ↑/↓ vertical  ←/→ horizontal"
     } else {
         "RAW KERNEL EVIDENCE  ·  Tab to focus"
     };
+    let lines = raw_lines
+        .iter()
+        .map(|line| highlight_raw_line(line, colors))
+        .collect::<Vec<_>>();
     f.render_widget(
-        Paragraph::new(event.raw_lines.join("\n"))
+        Paragraph::new(lines)
             .block(panel(panel_title(title, colors), colors))
             .style(Style::default().fg(colors.text))
-            .scroll((app.raw_scroll, 0))
-            .wrap(Wrap { trim: false }),
+            .scroll((app.raw_scroll, app.raw_horizontal_scroll)),
         area,
+    );
+    draw_vertical_scrollbar(
+        f,
+        area,
+        raw_lines.len(),
+        viewport_lines,
+        app.raw_scroll,
+        colors,
     );
 }
 
 fn timeline_item(event: &OomEvent, width: usize, colors: Palette) -> ListItem<'static> {
     let impact = impact(event);
-    let timestamp = event.timestamp.as_deref().unwrap_or("unknown time");
     let first = format!(
-        "● {:<8} {} · PID {} · {}",
+        "{} {:<4} {} · PID {} · {}",
+        impact.marker(),
         impact.label(),
         event.victim_name,
         event.victim_pid,
@@ -320,13 +332,9 @@ fn timeline_item(event: &OomEvent, width: usize, colors: Palette) -> ListItem<'s
     );
     let second = format!(
         "  {} · {} · {}",
-        timestamp,
         scope_short(event),
-        if event.reaped {
-            "reclaimed"
-        } else {
-            "not confirmed"
-        }
+        if event.reaped { "confirmed" } else { "pending" },
+        event.timestamp.as_deref().unwrap_or("unknown time")
     );
     ListItem::new(vec![
         Line::styled(
@@ -340,45 +348,108 @@ fn timeline_item(event: &OomEvent, width: usize, colors: Palette) -> ListItem<'s
     ])
 }
 
-fn draw_detail(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
+fn draw_detail(f: &mut Frame, area: Rect, app: &mut App, colors: Palette) {
     let Some(event) = app.selected() else {
         f.render_widget(
             Paragraph::new("Select an incident to inspect its recorded kernel context.")
                 .style(Style::default().fg(colors.muted))
                 .alignment(Alignment::Center)
-                .block(panel(panel_title("INCIDENT DETAIL", colors), colors)),
+                .block(panel(panel_title("INCIDENT INVESTIGATION", colors), colors)),
             area,
         );
         return;
     };
-
+    let lines = detail_lines(event, colors);
+    let content_lines = wrapped_line_count(&lines, area.width.saturating_sub(2) as usize);
+    app.set_detail_scroll_limits(content_lines, area.height.saturating_sub(2));
     let title = if app.focus == FocusPane::Details {
-        "INCIDENT DETAILS  ·  FOCUSED  ·  j/k scroll"
+        "INCIDENT INVESTIGATION  ·  FOCUSED  ·  ↑/↓ scroll"
     } else {
-        "INCIDENT DETAILS  ·  Tab to focus"
+        "INCIDENT INVESTIGATION  ·  Tab to focus"
     };
     f.render_widget(
-        Paragraph::new(full_detail_lines(event, colors))
+        Paragraph::new(lines)
             .block(panel(panel_title(title, colors), colors))
             .style(Style::default().fg(colors.text))
             .scroll((app.detail_scroll, 0))
             .wrap(Wrap { trim: false }),
         area,
     );
+    draw_vertical_scrollbar(
+        f,
+        area,
+        content_lines,
+        area.height.saturating_sub(2),
+        app.detail_scroll,
+        colors,
+    );
+}
+
+fn draw_vertical_scrollbar(
+    f: &mut Frame,
+    area: Rect,
+    content_lines: usize,
+    viewport_lines: u16,
+    position: u16,
+    colors: Palette,
+) {
+    if content_lines <= viewport_lines as usize {
+        return;
+    }
+    let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+        .thumb_symbol("█")
+        .track_symbol(Some("│"))
+        .thumb_style(Style::default().fg(colors.accent))
+        .track_style(Style::default().fg(colors.border));
+    let mut state = ScrollbarState::new(content_lines)
+        .viewport_content_length(viewport_lines as usize)
+        .position(position as usize);
+    f.render_stateful_widget(
+        scrollbar,
+        area.inner(&Margin {
+            vertical: 1,
+            horizontal: 0,
+        }),
+        &mut state,
+    );
+}
+
+fn wrapped_line_count(lines: &[Line<'_>], width: usize) -> usize {
+    if width == 0 {
+        return lines.len();
+    }
+    lines
+        .iter()
+        .map(|line| {
+            let line_width = line
+                .spans
+                .iter()
+                .map(|span| UnicodeWidthStr::width(span.content.as_ref()))
+                .sum::<usize>();
+            line_width.max(1).div_ceil(width)
+        })
+        .sum()
 }
 
 fn draw_footer(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
     let mut help = vec![
         shortcut("Tab", focus_label(app.focus), colors),
-        shortcut("j/k", "move/scroll", colors),
+        shortcut("↑/↓", "move/scroll", colors),
+        shortcut("←/→", "evidence", colors),
         shortcut("r", "reload", colors),
+        shortcut("?", "help", colors),
         shortcut("t", "theme", colors),
         shortcut("q", "quit", colors),
+        separator(colors),
+        Span::styled(
+            format!(" {} ", app.theme.label().to_ascii_lowercase()),
+            Style::default().fg(colors.muted),
+        ),
     ];
     if let Some(status) = &app.status {
-        help.push(Span::styled("  │  ", Style::default().fg(colors.muted)));
+        help.push(separator(colors));
         help.push(Span::styled(
-            status,
+            format!(" {status} "),
             Style::default()
                 .fg(colors.warning)
                 .add_modifier(Modifier::BOLD),
@@ -390,6 +461,62 @@ fn draw_footer(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
             .alignment(Alignment::Center),
         area,
     );
+}
+
+fn draw_help(f: &mut Frame, area: Rect, colors: Palette) {
+    let popup = centered_rect(72, 16, area);
+    let lines = vec![
+        Line::styled(
+            " Navigation",
+            Style::default()
+                .fg(colors.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Line::from(" Tab       cycle incidents, investigation, evidence"),
+        Line::from(" ↑/↓      select an incident or scroll focused pane"),
+        Line::from(" PgUp/PgDn, g/G  fast scroll focused pane"),
+        Line::from(" ←/→      horizontal evidence scroll"),
+        Line::from(""),
+        Line::styled(
+            " Actions",
+            Style::default()
+                .fg(colors.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Line::from(" r         reload source"),
+        Line::from(" t         cycle theme"),
+        Line::from(" ? / Esc   close help"),
+        Line::from(" q         quit"),
+        Line::from(""),
+        Line::styled(
+            " Search",
+            Style::default()
+                .fg(colors.muted)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Line::styled(
+            " Search shortcuts are planned; use evidence scrolling today.",
+            Style::default().fg(colors.muted),
+        ),
+    ];
+    f.render_widget(Clear, popup);
+    f.render_widget(
+        Paragraph::new(lines)
+            .block(panel(panel_title("HELP", colors), colors))
+            .style(Style::default().bg(colors.panel).fg(colors.text)),
+        popup,
+    );
+}
+
+fn centered_rect(width_percent: u16, requested_height: u16, area: Rect) -> Rect {
+    let width = (area.width.saturating_mul(width_percent) / 100).max(1);
+    let height = requested_height.min(area.height.saturating_sub(2)).max(1);
+    Rect::new(
+        area.x + area.width.saturating_sub(width) / 2,
+        area.y + area.height.saturating_sub(height) / 2,
+        width,
+        height,
+    )
 }
 
 fn focus_label(focus: FocusPane) -> &'static str {
@@ -412,7 +539,7 @@ fn shortcut(key: &'static str, label: &'static str, colors: Palette) -> Span<'st
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Impact {
     Low,
-    Elevated,
+    High,
     Critical,
     Unknown,
 }
@@ -421,18 +548,27 @@ impl Impact {
     fn label(self) -> &'static str {
         match self {
             Self::Low => "LOW",
-            Self::Elevated => "ELEVATED",
+            Self::High => "HIGH",
             Self::Critical => "CRITICAL",
             Self::Unknown => "UNKNOWN",
+        }
+    }
+
+    fn marker(self) -> &'static str {
+        match self {
+            Self::Low => ".",
+            Self::High => "!!",
+            Self::Critical => "!!!",
+            Self::Unknown => "?",
         }
     }
 
     fn color(self, colors: Palette) -> Color {
         match self {
             Self::Low => colors.good,
-            Self::Elevated => colors.warning,
+            Self::High => colors.warning,
             Self::Critical => colors.critical,
-            Self::Unknown => colors.muted,
+            Self::Unknown => colors.warning,
         }
     }
 }
@@ -440,25 +576,25 @@ impl Impact {
 fn impact(event: &OomEvent) -> Impact {
     match event.rss_share_of_ram() {
         Some(percent) if percent >= 50.0 => Impact::Critical,
-        Some(percent) if percent >= 20.0 => Impact::Elevated,
+        Some(percent) if percent >= 20.0 => Impact::High,
         Some(_) => Impact::Low,
         None => Impact::Unknown,
     }
 }
 
-fn scope_label(event: &OomEvent) -> String {
+fn scope_label(event: &OomEvent) -> &'static str {
     if event.memcg_kill {
-        "cgroup / container limit".to_string()
+        "cgroup memory limit"
     } else {
-        "host-wide exhaustion".to_string()
+        "host-wide exhaustion"
     }
 }
 
 fn scope_short(event: &OomEvent) -> &'static str {
     if event.memcg_kill {
-        "cgroup limit"
+        "cgroup"
     } else {
-        "host-wide"
+        "host"
     }
 }
 
@@ -472,23 +608,21 @@ fn workload(event: &OomEvent) -> String {
     )
 }
 
-fn reaper(event: &OomEvent) -> String {
+fn reaper(event: &OomEvent) -> &'static str {
     if event.reaped {
-        "confirmed — memory reclaimed".to_string()
+        "confirmed — memory reclaimed"
     } else {
-        "not confirmed in log".to_string()
+        "not confirmed in log"
     }
-}
-
-fn share_of_ram(event: &OomEvent) -> String {
-    event
-        .rss_share_of_ram()
-        .map(|percent| format!("{percent:.1}% of machine RAM"))
-        .unwrap_or_else(|| MISSING.to_string())
 }
 
 fn memory(kb: Option<u64>) -> String {
     kb.map(|value| format!("{:.1} MiB", value as f64 / 1024.0))
+        .unwrap_or_else(|| MISSING.to_string())
+}
+
+fn exact_memory(kb: Option<u64>) -> String {
+    kb.map(|value| format!("{:.1} MiB · {value} KiB", value as f64 / 1024.0))
         .unwrap_or_else(|| MISSING.to_string())
 }
 
@@ -518,60 +652,137 @@ fn ago(at: chrono::DateTime<chrono::Local>) -> String {
     }
 }
 
-fn full_detail_lines(event: &OomEvent, colors: Palette) -> Vec<Line<'static>> {
+fn swap(event: &OomEvent) -> String {
+    match event.mem.as_ref() {
+        Some(mem) => match (mem.swap_total_kb, mem.swap_free_kb) {
+            (Some(total), Some(free)) => {
+                format!("{} free of {}", memory(Some(free)), memory(Some(total)))
+            }
+            (Some(total), None) => format!("{} total", memory(Some(total))),
+            _ => MISSING.to_string(),
+        },
+        None => MISSING.to_string(),
+    }
+}
+
+fn detail_lines(event: &OomEvent, colors: Palette) -> Vec<Line<'static>> {
+    let investigation = investigate(event);
     let mut lines = vec![
-        full_row(
+        section("SUMMARY", colors),
+        detail_row(
             "Victim",
             format!("{} (PID {})", event.victim_name, event.victim_pid),
+            colors.text,
             colors,
         ),
-        full_row("Impact", impact(event).label(), colors),
-        full_row("Scope", scope_label(event), colors),
-        full_row("When", when(event), colors),
-        full_row(
-            "UID",
-            event
-                .uid
-                .map(|id| id.to_string())
-                .unwrap_or_else(|| MISSING.to_string()),
+        detail_row(
+            "Impact",
+            format!("{} {}", impact(event).marker(), impact(event).label()),
+            impact(event).color(colors),
             colors,
         ),
-        full_row(
-            "OOM score adj",
-            event
-                .oom_score_adj
-                .map(|value| value.to_string())
-                .unwrap_or_else(|| MISSING.to_string()),
-            colors,
-        ),
-        full_row("Workload", workload(event), colors),
-        full_row("Cgroup", present(event.cgroup.clone()), colors),
-        full_row("Limit cgroup", present(event.limit_cgroup.clone()), colors),
-        full_row("Constraint", present(event.constraint.clone()), colors),
-        full_row("Trigger", present(event.trigger_process.clone()), colors),
-        full_row("Allocation", allocation(event), colors),
-        Line::from(""),
-        full_row("RSS total", exact_memory(event.rss_total_kb()), colors),
-        full_row("Anonymous RSS", exact_memory(event.anon_rss_kb), colors),
-        full_row("File RSS", exact_memory(event.file_rss_kb), colors),
-        full_row("Shared RSS", exact_memory(event.shmem_rss_kb), colors),
-        full_row("Page tables", exact_memory(event.pgtables_kb), colors),
-        full_row("Total virtual", exact_memory(event.total_vm_kb), colors),
-        full_row(
-            "Machine RAM",
-            exact_memory(event.mem.as_ref().and_then(|m| m.total_ram_kb)),
-            colors,
-        ),
-        full_row("RAM share", share_of_ram(event), colors),
-        full_row("Reaper", reaper(event), colors),
-        Line::from(""),
-        Line::styled(
-            " Process snapshot",
-            Style::default()
-                .fg(colors.accent)
-                .add_modifier(Modifier::BOLD),
-        ),
+        detail_row("Cause", scope_label(event), colors.text, colors),
+        detail_row("Scope", scope_short(event), colors.text, colors),
     ];
+    lines.extend(
+        investigation
+            .summary
+            .iter()
+            .map(|line| diagnosis_line(line, colors)),
+    );
+    lines.push(Line::from(""));
+    lines.push(section("DIAGNOSIS", colors));
+    lines.extend(
+        investigation
+            .diagnosis
+            .iter()
+            .map(|line| diagnosis_line(line, colors)),
+    );
+    lines.push(Line::from(""));
+    lines.push(section("MEMORY", colors));
+    lines.extend([
+        detail_row(
+            "RSS",
+            exact_memory(event.rss_total_kb()),
+            colors.text,
+            colors,
+        ),
+        detail_row(
+            "Anonymous RSS",
+            exact_memory(event.anon_rss_kb),
+            colors.text,
+            colors,
+        ),
+        detail_row(
+            "File RSS",
+            exact_memory(event.file_rss_kb),
+            colors.text,
+            colors,
+        ),
+        detail_row(
+            "Shared RSS",
+            exact_memory(event.shmem_rss_kb),
+            colors.text,
+            colors,
+        ),
+        detail_row(
+            "Virtual memory",
+            exact_memory(event.total_vm_kb),
+            colors.muted,
+            colors,
+        ),
+        detail_row("Swap", swap(event), colors.muted, colors),
+    ]);
+    lines.push(Line::from(""));
+    lines.push(section("SYSTEM", colors));
+    lines.extend([
+        detail_row(
+            "Trigger",
+            present(event.trigger_process.clone()),
+            colors.text,
+            colors,
+        ),
+        detail_row("Allocation", allocation(event), colors.text, colors),
+        detail_row(
+            "Constraint",
+            present(event.constraint.clone()),
+            colors.text,
+            colors,
+        ),
+        detail_row(
+            "OOM score",
+            option_i32(event.oom_score_adj),
+            colors.text,
+            colors,
+        ),
+        detail_row("UID", option_u32(event.uid), colors.text, colors),
+        detail_row("Cgroup", present(event.cgroup.clone()), colors.text, colors),
+        detail_row(
+            "Limit cgroup",
+            present(event.limit_cgroup.clone()),
+            colors.text,
+            colors,
+        ),
+        detail_row("Workload", workload(event), colors.text, colors),
+    ]);
+    lines.push(Line::from(""));
+    lines.push(section("TIMELINE", colors));
+    lines.extend([
+        detail_row("Timestamp", when(event), colors.text, colors),
+        detail_row("Classification", scope_label(event), colors.text, colors),
+        detail_row(
+            "Confirmation",
+            reaper(event),
+            if event.reaped {
+                colors.good
+            } else {
+                colors.warning
+            },
+            colors,
+        ),
+    ]);
+    lines.push(Line::from(""));
+    lines.push(section("TASK SNAPSHOT", colors));
     if event.processes.is_empty() {
         lines.push(Line::styled(
             format!("  {MISSING}"),
@@ -590,7 +801,28 @@ fn full_detail_lines(event: &OomEvent, colors: Palette) -> Vec<Line<'static>> {
     lines
 }
 
-fn full_row(label: &str, value: impl Into<String>, colors: Palette) -> Line<'static> {
+fn section(label: &str, colors: Palette) -> Line<'static> {
+    Line::styled(
+        format!(" {label}"),
+        Style::default()
+            .fg(colors.accent)
+            .add_modifier(Modifier::BOLD),
+    )
+}
+
+fn diagnosis_line(value: &str, colors: Palette) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(" • ", Style::default().fg(colors.accent)),
+        Span::styled(value.to_string(), Style::default().fg(colors.text)),
+    ])
+}
+
+fn detail_row(
+    label: &str,
+    value: impl Into<String>,
+    value_color: Color,
+    colors: Palette,
+) -> Line<'static> {
     Line::from(vec![
         Span::styled(
             format!(" {label:<16}"),
@@ -598,20 +830,94 @@ fn full_row(label: &str, value: impl Into<String>, colors: Palette) -> Line<'sta
                 .fg(colors.muted)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(value.into(), Style::default().fg(colors.text)),
+        Span::styled(value.into(), Style::default().fg(value_color)),
     ])
 }
 
 fn allocation(event: &OomEvent) -> String {
     match (&event.gfp_mask, event.order) {
         (Some(mask), Some(order)) => format!("order {order} · {mask}"),
+        (Some(mask), None) => mask.to_string(),
         _ => MISSING.to_string(),
     }
 }
 
-fn exact_memory(kb: Option<u64>) -> String {
-    kb.map(|value| format!("{:.1} MiB · {value} KiB", value as f64 / 1024.0))
+fn option_u32(value: Option<u32>) -> String {
+    value
+        .map(|value| value.to_string())
         .unwrap_or_else(|| MISSING.to_string())
+}
+
+fn option_i32(value: Option<i32>) -> String {
+    value
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| MISSING.to_string())
+}
+
+const RAW_TOKENS: &[&str] = &[
+    "Memory cgroup out of memory",
+    "Out of memory",
+    "Killed process",
+    "invoked oom-killer",
+    "page allocation failure",
+    "Mem-Info",
+    "Task state",
+    "oom_score_adj",
+    "constraint",
+    "Total swap",
+    "Free swap",
+    "GFP_",
+];
+
+fn highlight_raw_line(line: &str, colors: Palette) -> Line<'static> {
+    let mut spans = Vec::new();
+    let mut cursor = 0;
+    while cursor < line.len() {
+        let mut next: Option<(usize, &str)> = None;
+        for token in RAW_TOKENS {
+            if let Some(relative) = line[cursor..].find(token) {
+                let candidate = (cursor + relative, *token);
+                if next
+                    .map(|current| {
+                        candidate.0 < current.0
+                            || (candidate.0 == current.0 && candidate.1.len() > current.1.len())
+                    })
+                    .unwrap_or(true)
+                {
+                    next = Some(candidate);
+                }
+            }
+        }
+        let Some((start, token)) = next else {
+            spans.push(Span::raw(line[cursor..].to_string()));
+            break;
+        };
+        if start > cursor {
+            spans.push(Span::raw(line[cursor..start].to_string()));
+        }
+        let style = if matches!(
+            token,
+            "Memory cgroup out of memory"
+                | "Out of memory"
+                | "Killed process"
+                | "invoked oom-killer"
+                | "page allocation failure"
+        ) {
+            Style::default()
+                .fg(colors.critical)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+                .fg(colors.warning)
+                .add_modifier(Modifier::BOLD)
+        };
+        spans.push(Span::styled(token.to_string(), style));
+        cursor = start + token.len();
+    }
+    if spans.is_empty() {
+        spans.push(Span::raw(String::new()));
+    }
+    Line::from(spans)
 }
 
 fn truncate_to_width(value: &str, max_width: usize) -> String {
@@ -641,8 +947,10 @@ fn truncate_to_width(value: &str, max_width: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{MemInfo, ProcessEntry};
-    use crate::source::SourceOptions;
+    use crate::{
+        model::{MemInfo, ProcessEntry},
+        source::SourceOptions,
+    };
     use ratatui::{backend::TestBackend, Terminal};
 
     fn event(with_peers: bool, with_memory: bool) -> OomEvent {
@@ -654,7 +962,7 @@ mod tests {
             file_rss_kb: Some(0),
             shmem_rss_kb: Some(0),
             cgroup: Some("/kubepods.slice/a-cgroup-path-that-is-deliberately-long".to_string()),
-            raw_lines: vec!["raw evidence".to_string()],
+            raw_lines: vec!["Out of memory: Killed process 42 (worker) oom_score_adj=0".to_string()],
             ..Default::default()
         };
         if with_memory {
@@ -680,7 +988,7 @@ mod tests {
         event
     }
 
-    fn render(width: u16, height: u16, event: OomEvent) -> String {
+    fn render(width: u16, height: u16, event: OomEvent, help: bool) -> String {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
         let mut app = App::new(
             vec![event],
@@ -688,6 +996,7 @@ mod tests {
             SourceOptions::default(),
             None,
         );
+        app.help_visible = help;
         terminal.draw(|frame| draw(frame, &mut app)).unwrap();
         terminal
             .backend()
@@ -712,25 +1021,32 @@ mod tests {
     }
 
     #[test]
-    fn wide_medium_and_narrow_layouts_render() {
+    fn layouts_render_investigation_sections() {
         for (width, height) in [(140, 40), (100, 30), (70, 24)] {
-            let output = render(width, height, event(true, true));
-            assert!(output.contains("INCIDENT"));
-            assert!(output.contains("INCIDENT DETAILS"));
+            let output = render(width, height, event(true, true), false);
+            assert!(output.contains("SUMMARY"));
+            assert!(output.contains("DIAGNOSIS"));
         }
     }
 
     #[test]
-    fn wide_layout_keeps_navigation_and_raw_evidence_visible() {
-        let output = render(140, 40, event(true, true));
-        assert!(output.contains("SELECTED 1/1"));
+    fn wide_layout_keeps_evidence_and_metadata_visible() {
+        let output = render(140, 40, event(true, true), false);
+        assert!(output.contains("VIEWING"));
         assert!(output.contains("RAW KERNEL EVIDENCE"));
-        assert!(output.contains("raw evidence"));
+        assert!(output.contains("Killed process"));
     }
 
     #[test]
-    fn incident_details_keep_missing_fields_explicit() {
-        let output = render(140, 40, event(false, false));
-        assert!(output.contains("not reported"));
+    fn help_overlay_is_available_without_replacing_the_console() {
+        let output = render(140, 40, event(false, false), true);
+        assert!(output.contains("HELP"));
+        assert!(output.contains("Search shortcuts are planned"));
+    }
+
+    #[test]
+    fn long_investigations_render_a_visible_scrollbar() {
+        let output = render(140, 20, event(true, true), false);
+        assert!(output.contains('█'));
     }
 }

@@ -38,8 +38,13 @@ pub struct App {
     pub source_description: String,
     /// Scroll offset within the persistent raw-evidence pane.
     pub raw_scroll: u16,
+    pub raw_horizontal_scroll: u16,
     pub detail_scroll: u16,
+    raw_max_scroll: u16,
+    raw_horizontal_max_scroll: u16,
+    detail_max_scroll: u16,
     pub focus: FocusPane,
+    pub help_visible: bool,
     pub theme: Theme,
     pub device: DeviceInfo,
     pub status: Option<String>,
@@ -66,8 +71,13 @@ impl App {
             list_state,
             source_description,
             raw_scroll: 0,
+            raw_horizontal_scroll: 0,
             detail_scroll: 0,
+            raw_max_scroll: 0,
+            raw_horizontal_max_scroll: 0,
+            detail_max_scroll: 0,
             focus: FocusPane::Incidents,
+            help_visible: false,
             theme: Theme::Midnight,
             device: DeviceInfo::detect(),
             status: None,
@@ -91,6 +101,7 @@ impl App {
         };
         self.list_state.select(Some(i));
         self.raw_scroll = 0;
+        self.raw_horizontal_scroll = 0;
         self.detail_scroll = 0;
     }
 
@@ -104,6 +115,7 @@ impl App {
         };
         self.list_state.select(Some(i));
         self.raw_scroll = 0;
+        self.raw_horizontal_scroll = 0;
         self.detail_scroll = 0;
     }
 
@@ -131,47 +143,59 @@ impl App {
         ));
     }
 
+    pub fn toggle_help(&mut self) {
+        self.help_visible = !self.help_visible;
+    }
+
+    pub fn set_raw_scroll_limits(
+        &mut self,
+        content_lines: usize,
+        viewport_lines: u16,
+        max_width: usize,
+        viewport_width: u16,
+    ) {
+        self.raw_max_scroll = content_lines
+            .saturating_sub(viewport_lines as usize)
+            .min(u16::MAX as usize) as u16;
+        self.raw_horizontal_max_scroll = max_width
+            .saturating_sub(viewport_width as usize)
+            .min(u16::MAX as usize) as u16;
+        self.raw_scroll = self.raw_scroll.min(self.raw_max_scroll);
+        self.raw_horizontal_scroll = self
+            .raw_horizontal_scroll
+            .min(self.raw_horizontal_max_scroll);
+    }
+
+    pub fn set_detail_scroll_limits(&mut self, content_lines: usize, viewport_lines: u16) {
+        self.detail_max_scroll = content_lines
+            .saturating_sub(viewport_lines as usize)
+            .min(u16::MAX as usize) as u16;
+        self.detail_scroll = self.detail_scroll.min(self.detail_max_scroll);
+    }
+
     pub fn scroll_raw(&mut self, delta: i32) {
-        let max = self
-            .selected()
-            .map(|e| e.raw_lines.len().saturating_sub(1) as u16)
-            .unwrap_or(0);
-        self.raw_scroll = (self.raw_scroll as i32 + delta).clamp(0, max as i32) as u16;
+        self.raw_scroll =
+            (self.raw_scroll as i32 + delta).clamp(0, self.raw_max_scroll as i32) as u16;
+    }
+
+    pub fn scroll_raw_horizontal(&mut self, delta: i32) {
+        self.raw_horizontal_scroll = (self.raw_horizontal_scroll as i32 + delta)
+            .clamp(0, self.raw_horizontal_max_scroll as i32)
+            as u16;
     }
 
     pub fn scroll_raw_to(&mut self, end: bool) {
-        self.raw_scroll = if end {
-            self.selected()
-                .map(|e| e.raw_lines.len().saturating_sub(1) as u16)
-                .unwrap_or(0)
-        } else {
-            0
-        };
+        self.raw_scroll = if end { self.raw_max_scroll } else { 0 };
     }
 
     pub fn scroll_details(&mut self, delta: i32) {
-        let max = self
-            .selected()
-            .map(detail_line_count)
-            .unwrap_or(0)
-            .saturating_sub(1) as u16;
-        self.detail_scroll = (self.detail_scroll as i32 + delta).clamp(0, max as i32) as u16;
+        self.detail_scroll =
+            (self.detail_scroll as i32 + delta).clamp(0, self.detail_max_scroll as i32) as u16;
     }
 
     pub fn scroll_details_to(&mut self, end: bool) {
-        self.detail_scroll = if end {
-            self.selected()
-                .map(detail_line_count)
-                .unwrap_or(0)
-                .saturating_sub(1) as u16
-        } else {
-            0
-        };
+        self.detail_scroll = if end { self.detail_max_scroll } else { 0 };
     }
-}
-
-fn detail_line_count(event: &OomEvent) -> usize {
-    17 + event.processes.len()
 }
 
 #[cfg(test)]
@@ -193,11 +217,26 @@ mod tests {
     #[test]
     fn evidence_and_details_have_independent_scroll_positions() {
         let mut app = app();
+        app.set_raw_scroll_limits(2, 1, 20, 10);
+        app.set_detail_scroll_limits(3, 1);
         app.scroll_raw(1);
         assert_eq!(app.raw_scroll, 1);
 
         app.scroll_details(1);
         assert_eq!(app.detail_scroll, 1);
+    }
+
+    #[test]
+    fn scroll_limits_follow_rendered_viewports() {
+        let mut app = app();
+        app.set_raw_scroll_limits(10, 4, 40, 12);
+        app.set_detail_scroll_limits(12, 5);
+        app.scroll_raw(100);
+        app.scroll_raw_horizontal(100);
+        app.scroll_details(100);
+        assert_eq!(app.raw_scroll, 6);
+        assert_eq!(app.raw_horizontal_scroll, 28);
+        assert_eq!(app.detail_scroll, 7);
     }
 
     #[test]

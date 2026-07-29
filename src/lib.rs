@@ -3,6 +3,7 @@
 //! Split out as a library so the parser can be exercised directly by fuzzers
 //! and integration tests, which cannot reach into a binary-only crate.
 
+pub mod analysis;
 pub mod app;
 pub mod container;
 pub mod model;
