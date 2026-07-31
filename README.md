@@ -11,6 +11,7 @@
 **A terminal forensics console for Linux OOM kills.**  
 Reconstructs scattered kernel log lines into structured, navigable incidents with the original evidence preserved alongside the analysis.
 
+![oom-tui demo](docs/assets/demo.gif)
 
 </div>
 
