@@ -271,10 +271,9 @@ fn load_source_options(app: &mut App, opts: SourceOptions) {
             app.source_options = opts;
             app.source_description = source.description;
             app.warning = source.warning;
-            app.status = Some(format!("loaded source — {count} event(s)"));
+            app.status = Some(format!("✓ scan successful — {count} event(s) loaded"));
 
             if !app.events.is_empty() {
-                app.show_landing = false;
                 let index = previously_selected
                     .and_then(|pid| app.events.iter().position(|e| e.victim_pid == pid))
                     .or_else(|| app.events.len().checked_sub(1));
@@ -284,7 +283,7 @@ fn load_source_options(app: &mut App, opts: SourceOptions) {
             }
         }
         Err(error) => {
-            app.status = Some(format!("source load failed: {error}"));
+            app.status = Some(format!("❌ scan failed: {error}"));
         }
     }
 }

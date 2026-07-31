@@ -256,7 +256,7 @@ fn draw_landing_page(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
 
         let right_rows = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(11), Constraint::Min(0)])
+            .constraints([Constraint::Length(12), Constraint::Min(0)])
             .split(columns[1]);
 
         draw_landing_quick_actions(f, right_rows[0], colors);
@@ -265,8 +265,8 @@ fn draw_landing_page(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(7),
-                Constraint::Length(10),
+                Constraint::Length(9),
+                Constraint::Length(11),
                 Constraint::Min(0),
             ])
             .split(area);
@@ -279,23 +279,23 @@ fn draw_landing_page(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
 fn draw_landing_hero(f: &mut Frame, area: Rect, colors: Palette) {
     let logo = vec![
         Line::styled(
-            r"  ██████╗  ██████╗ ███╗   ███╗  ████████╗██╗██╗",
+            r"  ██████╗  ██████╗ ███╗   ███╗  ████████╗██╗  ██╗██╗",
             Style::default()
                 .fg(colors.accent)
                 .add_modifier(Modifier::BOLD),
         ),
         Line::styled(
-            r" ██╔═══██╗██╔═══██╗████╗ ████║  ╚══██╔══╝██║██║",
+            r" ██╔═══██╗██╔═══██╗████╗ ████║  ╚══██╔══╝██║  ██║██║",
             Style::default()
                 .fg(colors.accent)
                 .add_modifier(Modifier::BOLD),
         ),
         Line::styled(
-            r" ██║   ██║██║   ██║██╔████╔██║     ██║   ██║██║",
+            r" ██║   ██║██║   ██║██╔████╔██║     ██║   ██║  ██║██║",
             Style::default().fg(colors.accent),
         ),
         Line::styled(
-            r" ╚██████╔╝╚██████╔╝██║ ╚═╝ ██║     ██║   ██║██║",
+            r" ╚██████╔╝╚██████╔╝██║ ╚═╝ ██║     ██║   ╚██████╔╝██║",
             Style::default().fg(colors.border),
         ),
         Line::from(""),
@@ -325,10 +325,10 @@ fn draw_landing_hero(f: &mut Frame, area: Rect, colors: Palette) {
 fn draw_landing_system(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
     let mut lines = vec![
         section("HOST ENVIRONMENT SPECS", colors),
-        detail_row("Operating System", &app.device.os, colors.text, colors),
-        detail_row("CPU Architecture", &app.device.cpu, colors.text, colors),
-        detail_row("Graphics Adapter", &app.device.gpu, colors.text, colors),
-        detail_row("Total System RAM", &app.device.ram, colors.accent, colors),
+        detail_row("OS Release", &app.device.os, colors.text, colors),
+        detail_row("Processor", &app.device.cpu, colors.text, colors),
+        detail_row("Graphics", &app.device.gpu, colors.text, colors),
+        detail_row("System RAM", &app.device.ram, colors.accent, colors),
         Line::from(""),
         section("ACTIVE LOG SOURCE STATUS", colors),
         detail_row(
@@ -351,20 +351,25 @@ fn draw_landing_system(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
                 .add_modifier(Modifier::BOLD),
         ));
         lines.push(Line::styled(
-            "  No Out-Of-Memory kills detected in current kernel log window.",
+            "  No Out-Of-Memory kills detected in current log source window.",
             Style::default().fg(colors.muted),
         ));
     } else {
         lines.push(Line::from(""));
         lines.push(Line::styled(
-            format!("  ● ALERT: {} OOM INCIDENT(S) LOADED", app.events.len()),
+            format!(
+                "  ● ALERT: {} OOM INCIDENT(S) LOADED AND READY",
+                app.events.len()
+            ),
             Style::default()
                 .fg(colors.critical)
                 .add_modifier(Modifier::BOLD),
         ));
         lines.push(Line::styled(
-            "  Press 'h' to open the Master-Detail Incident Console.",
-            Style::default().fg(colors.accent),
+            "  Press 'h' to open the Master-Detail Incident Console view.",
+            Style::default()
+                .fg(colors.accent)
+                .add_modifier(Modifier::BOLD),
         ));
     }
 
