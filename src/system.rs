@@ -30,7 +30,7 @@ fn total_ram() -> Option<String> {
         .next()?
         .parse::<u64>()
         .ok()?;
-    Some(format!("{:.1} GiB RAM", kb as f64 / 1024.0 / 1024.0))
+    Some(format!("{:.1} GiB", kb as f64 / 1024.0 / 1024.0))
 }
 
 fn cpu_model() -> Option<String> {
@@ -39,7 +39,7 @@ fn cpu_model() -> Option<String> {
         line.strip_prefix("model name\t: ")
             .or_else(|| line.strip_prefix("Hardware\t: "))
     })?;
-    Some(format!("CPU {}", compact(model, 42)))
+    Some(model.trim().to_string())
 }
 
 fn gpu_model() -> Option<String> {
@@ -62,7 +62,7 @@ fn gpu_model() -> Option<String> {
         ("", _) => device.to_string(),
         _ => format!("{vendor} {device}"),
     };
-    Some(format!("GPU {}", compact(&name, 32)))
+    Some(name.trim().to_string())
 }
 
 fn os_version() -> Option<String> {
@@ -70,29 +70,5 @@ fn os_version() -> Option<String> {
     let pretty = release
         .lines()
         .find_map(|line| line.strip_prefix("PRETTY_NAME="))?;
-    Some(format!("OS {}", compact(pretty.trim_matches('"'), 34)))
-}
-
-fn compact(value: &str, max: usize) -> String {
-    let value = value.trim();
-    if value.chars().count() <= max {
-        value.to_string()
-    } else {
-        value
-            .chars()
-            .take(max.saturating_sub(1))
-            .collect::<String>()
-            + "…"
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::compact;
-
-    #[test]
-    fn compact_marks_truncated_device_names() {
-        assert_eq!(compact("abcdef", 4), "abc…");
-        assert_eq!(compact("abc", 4), "abc");
-    }
+    Some(pretty.trim_matches('"').trim().to_string())
 }

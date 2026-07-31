@@ -135,21 +135,44 @@ fn timeline_height(terminal_height: u16, events: usize) -> u16 {
     wanted.min(max_timeline.max(3))
 }
 
-fn panel(title: impl Into<Line<'static>>, colors: Palette) -> Block<'static> {
+fn panel(title: impl Into<Line<'static>>, focused: bool, colors: Palette) -> Block<'static> {
+    let border_color = if focused {
+        colors.selection
+    } else {
+        colors.border
+    };
+    let border_style = if focused {
+        Style::default()
+            .fg(border_color)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(border_color)
+    };
     Block::default()
         .title(title)
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(colors.border))
+        .border_style(border_style)
         .style(Style::default().bg(colors.surface))
 }
 
-fn panel_title(title: impl Into<String>, colors: Palette) -> Line<'static> {
-    Line::from(Span::styled(
-        format!(" {} ", title.into()),
+fn panel_title(title: impl Into<String>, focused: bool, colors: Palette) -> Line<'static> {
+    let style = if focused {
+        Style::default()
+            .fg(colors.surface)
+            .bg(colors.selection)
+            .add_modifier(Modifier::BOLD)
+    } else {
         Style::default()
             .fg(colors.accent)
-            .add_modifier(Modifier::BOLD),
-    ))
+            .add_modifier(Modifier::BOLD)
+    };
+    let title_str = title.into();
+    let label = if focused {
+        format!(" ▶ {title_str} ◀ ")
+    } else {
+        format!(" {title_str} ")
+    };
+    Line::from(Span::styled(label, style))
 }
 
 fn draw_header(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
@@ -256,7 +279,7 @@ fn draw_landing_page(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
 
         let right_rows = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(11), Constraint::Min(0)])
+            .constraints([Constraint::Length(12), Constraint::Min(0)])
             .split(columns[1]);
 
         draw_landing_quick_actions(f, right_rows[0], colors);
@@ -265,8 +288,8 @@ fn draw_landing_page(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(7),
-                Constraint::Length(10),
+                Constraint::Length(9),
+                Constraint::Length(11),
                 Constraint::Min(0),
             ])
             .split(area);
@@ -279,23 +302,23 @@ fn draw_landing_page(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
 fn draw_landing_hero(f: &mut Frame, area: Rect, colors: Palette) {
     let logo = vec![
         Line::styled(
-            r"  ██████╗  ██████╗ ███╗   ███╗  ████████╗██╗██╗",
+            r"  ██████╗  ██████╗ ███╗   ███╗  ████████╗██╗  ██╗██╗",
             Style::default()
                 .fg(colors.accent)
                 .add_modifier(Modifier::BOLD),
         ),
         Line::styled(
-            r" ██╔═══██╗██╔═══██╗████╗ ████║  ╚══██╔══╝██║██║",
+            r" ██╔═══██╗██╔═══██╗████╗ ████║  ╚══██╔══╝██║  ██║██║",
             Style::default()
                 .fg(colors.accent)
                 .add_modifier(Modifier::BOLD),
         ),
         Line::styled(
-            r" ██║   ██║██║   ██║██╔████╔██║     ██║   ██║██║",
+            r" ██║   ██║██║   ██║██╔████╔██║     ██║   ██║  ██║██║",
             Style::default().fg(colors.accent),
         ),
         Line::styled(
-            r" ╚██████╔╝╚██████╔╝██║ ╚═╝ ██║     ██║   ██║██║",
+            r" ╚██████╔╝╚██████╔╝██║ ╚═╝ ██║     ██║   ╚██████╔╝██║",
             Style::default().fg(colors.border),
         ),
         Line::from(""),
@@ -317,7 +340,11 @@ fn draw_landing_hero(f: &mut Frame, area: Rect, colors: Palette) {
         ),
     ];
     f.render_widget(
-        Paragraph::new(logo).block(panel(panel_title("WELCOME TO OOM-TUI", colors), colors)),
+        Paragraph::new(logo).block(panel(
+            panel_title("WELCOME TO OOM-TUI", false, colors),
+            false,
+            colors,
+        )),
         area,
     );
 }
@@ -325,46 +352,60 @@ fn draw_landing_hero(f: &mut Frame, area: Rect, colors: Palette) {
 fn draw_landing_system(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
     let mut lines = vec![
         section("HOST ENVIRONMENT SPECS", colors),
-        detail_row("Operating System", &app.device.os, colors.text, colors),
-        detail_row("CPU Architecture", &app.device.cpu, colors.text, colors),
-        detail_row("Graphics Adapter", &app.device.gpu, colors.text, colors),
-        detail_row("Total System RAM", &app.device.ram, colors.accent, colors),
+        spec_row("OS Release", &app.device.os, colors.text, colors),
+        spec_row("Processor", &app.device.cpu, colors.text, colors),
+        spec_row("Graphics", &app.device.gpu, colors.text, colors),
+        spec_row("System RAM", &app.device.ram, colors.accent, colors),
         Line::from(""),
         section("ACTIVE LOG SOURCE STATUS", colors),
-        detail_row(
+        spec_row(
             "Target Source",
-            truncate_to_width(
-                &app.source_description,
-                area.width.saturating_sub(20) as usize,
-            ),
+            &app.source_description,
             colors.text,
             colors,
         ),
     ];
 
-    if app.events.is_empty() {
+    if app.is_loading {
         lines.push(Line::from(""));
         lines.push(Line::styled(
-            "  ● SYSTEM HEALTH: CLEAN",
+            "  ⏳ SCANNING LOG SOURCE IN BACKGROUND...",
+            Style::default()
+                .fg(colors.warning)
+                .add_modifier(Modifier::BOLD),
+        ));
+        lines.push(Line::styled(
+            format!("  {}", app.loading_message),
+            Style::default().fg(colors.accent),
+        ));
+    } else if app.events.is_empty() {
+        lines.push(Line::from(""));
+        lines.push(Line::styled(
+            "  ● SYSTEM HEALTH: CLEAN (0 OOM Kills)",
             Style::default()
                 .fg(colors.good)
                 .add_modifier(Modifier::BOLD),
         ));
         lines.push(Line::styled(
-            "  No Out-Of-Memory kills detected in current kernel log window.",
+            "  No Out-Of-Memory kills detected in current log source window.",
             Style::default().fg(colors.muted),
         ));
     } else {
         lines.push(Line::from(""));
         lines.push(Line::styled(
-            format!("  ● ALERT: {} OOM INCIDENT(S) LOADED", app.events.len()),
+            format!(
+                "  ● ALERT: {} OOM INCIDENT(S) LOADED AND READY",
+                app.events.len()
+            ),
             Style::default()
                 .fg(colors.critical)
                 .add_modifier(Modifier::BOLD),
         ));
         lines.push(Line::styled(
-            "  Press 'h' to open the Master-Detail Incident Console.",
-            Style::default().fg(colors.accent),
+            "  Press 'h' to open the Master-Detail Incident Console view.",
+            Style::default()
+                .fg(colors.accent)
+                .add_modifier(Modifier::BOLD),
         ));
     }
 
@@ -379,12 +420,25 @@ fn draw_landing_system(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
     f.render_widget(
         Paragraph::new(lines)
             .block(panel(
-                panel_title("SYSTEM & HEALTH MONITOR", colors),
+                panel_title("SYSTEM & HEALTH MONITOR", false, colors),
+                false,
                 colors,
             ))
             .wrap(Wrap { trim: false }),
         area,
     );
+}
+
+fn spec_row(label: &str, value: &str, value_color: Color, colors: Palette) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(
+            format!("  {label:<14} "),
+            Style::default()
+                .fg(colors.muted)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(value.to_string(), Style::default().fg(value_color)),
+    ])
 }
 
 fn draw_landing_quick_actions(f: &mut Frame, area: Rect, colors: Palette) {
@@ -425,7 +479,8 @@ fn draw_landing_quick_actions(f: &mut Frame, area: Rect, colors: Palette) {
 
     f.render_widget(
         Paragraph::new(lines).block(panel(
-            panel_title("QUICK ACTIONS & SOURCES", colors),
+            panel_title("QUICK ACTIONS & SOURCES", false, colors),
+            false,
             colors,
         )),
         area,
@@ -493,7 +548,11 @@ fn draw_landing_guide(f: &mut Frame, area: Rect, colors: Palette) {
     ];
 
     f.render_widget(
-        Paragraph::new(lines).block(panel(panel_title("FORENSICS CHEAT-SHEET", colors), colors)),
+        Paragraph::new(lines).block(panel(
+            panel_title("FORENSICS CHEAT-SHEET", false, colors),
+            false,
+            colors,
+        )),
         area,
     );
 }
@@ -512,6 +571,7 @@ fn separator(colors: Palette) -> Span<'static> {
 }
 
 fn draw_incident_list(f: &mut Frame, area: Rect, app: &mut App, title: &str, colors: Palette) {
+    let is_focused = app.focus == FocusPane::Incidents;
     if app.events.is_empty() {
         let message = vec![
             Line::styled(
@@ -527,7 +587,11 @@ fn draw_incident_list(f: &mut Frame, area: Rect, app: &mut App, title: &str, col
         ];
         f.render_widget(
             Paragraph::new(message)
-                .block(panel(panel_title(title, colors), colors))
+                .block(panel(
+                    panel_title(title, is_focused, colors),
+                    is_focused,
+                    colors,
+                ))
                 .wrap(Wrap { trim: true }),
             area,
         );
@@ -538,13 +602,18 @@ fn draw_incident_list(f: &mut Frame, area: Rect, app: &mut App, title: &str, col
     let items: Vec<ListItem> = app
         .events
         .iter()
-        .map(|event| timeline_item(event, item_width, colors))
+        .enumerate()
+        .map(|(index, event)| timeline_item(index + 1, event, item_width, colors))
         .collect();
     let list = List::new(items)
-        .block(panel(panel_title(title, colors), colors))
+        .block(panel(
+            panel_title(title, is_focused, colors),
+            is_focused,
+            colors,
+        ))
         .highlight_style(
             Style::default()
-                .bg(if app.focus == FocusPane::Incidents {
+                .bg(if is_focused {
                     colors.selection
                 } else {
                     colors.panel
@@ -576,11 +645,16 @@ fn draw_master_detail(f: &mut Frame, area: Rect, app: &mut App, colors: Palette)
 }
 
 fn draw_raw_evidence(f: &mut Frame, area: Rect, app: &mut App, colors: Palette) {
+    let is_focused = app.focus == FocusPane::Evidence;
     let Some(event) = app.selected() else {
         f.render_widget(
             Paragraph::new("Select an incident to inspect its unmodified kernel evidence.")
                 .style(Style::default().fg(colors.muted))
-                .block(panel(panel_title("RAW KERNEL EVIDENCE", colors), colors)),
+                .block(panel(
+                    panel_title("RAW KERNEL EVIDENCE", is_focused, colors),
+                    is_focused,
+                    colors,
+                )),
             area,
         );
         return;
@@ -594,7 +668,7 @@ fn draw_raw_evidence(f: &mut Frame, area: Rect, app: &mut App, colors: Palette) 
         .max()
         .unwrap_or(0);
     app.set_raw_scroll_limits(raw_lines.len(), viewport_lines, max_width, viewport_width);
-    let title = if app.focus == FocusPane::Evidence {
+    let title = if is_focused {
         "RAW KERNEL EVIDENCE  ·  FOCUSED  ·  ↑/↓ vertical  ←/→ horizontal"
     } else {
         "RAW KERNEL EVIDENCE  ·  Tab to focus"
@@ -605,7 +679,11 @@ fn draw_raw_evidence(f: &mut Frame, area: Rect, app: &mut App, colors: Palette) 
         .collect::<Vec<_>>();
     f.render_widget(
         Paragraph::new(lines)
-            .block(panel(panel_title(title, colors), colors))
+            .block(panel(
+                panel_title(title, is_focused, colors),
+                is_focused,
+                colors,
+            ))
             .style(Style::default().fg(colors.text))
             .scroll((app.raw_scroll, app.raw_horizontal_scroll)),
         area,
@@ -620,7 +698,7 @@ fn draw_raw_evidence(f: &mut Frame, area: Rect, app: &mut App, colors: Palette) 
     );
 }
 
-fn timeline_item(event: &OomEvent, width: usize, colors: Palette) -> ListItem<'static> {
+fn timeline_item(num: usize, event: &OomEvent, width: usize, colors: Palette) -> ListItem<'static> {
     let impact = impact(event);
     let ram_bar = match event.rss_share_of_ram() {
         Some(pct) => {
@@ -635,7 +713,7 @@ fn timeline_item(event: &OomEvent, width: usize, colors: Palette) -> ListItem<'s
         None => "".to_string(),
     };
     let first = format!(
-        "{} {:<4} {} · PID {}{}",
+        "#{num} {} {:<4} {} · PID {}{}",
         impact.marker(),
         impact.label(),
         event.victim_name,
@@ -643,7 +721,7 @@ fn timeline_item(event: &OomEvent, width: usize, colors: Palette) -> ListItem<'s
         ram_bar
     );
     let second = format!(
-        "  [{}] · {} · {}",
+        "   [{}] · {} · {}",
         scope_short(event).to_ascii_uppercase(),
         if event.reaped {
             "✓ reaped"
@@ -665,12 +743,17 @@ fn timeline_item(event: &OomEvent, width: usize, colors: Palette) -> ListItem<'s
 }
 
 fn draw_detail(f: &mut Frame, area: Rect, app: &mut App, colors: Palette) {
+    let is_focused = app.focus == FocusPane::Details;
     let Some(event) = app.selected() else {
         f.render_widget(
             Paragraph::new("Select an incident to inspect its recorded kernel context.")
                 .style(Style::default().fg(colors.muted))
                 .alignment(Alignment::Center)
-                .block(panel(panel_title("INCIDENT INVESTIGATION", colors), colors)),
+                .block(panel(
+                    panel_title("INCIDENT INVESTIGATION", is_focused, colors),
+                    is_focused,
+                    colors,
+                )),
             area,
         );
         return;
@@ -678,14 +761,18 @@ fn draw_detail(f: &mut Frame, area: Rect, app: &mut App, colors: Palette) {
     let lines = detail_lines(event, colors);
     let content_lines = wrapped_line_count(&lines, area.width.saturating_sub(2) as usize);
     app.set_detail_scroll_limits(content_lines, area.height.saturating_sub(2));
-    let title = if app.focus == FocusPane::Details {
+    let title = if is_focused {
         "INCIDENT INVESTIGATION  ·  FOCUSED  ·  ↑/↓ scroll"
     } else {
         "INCIDENT INVESTIGATION  ·  Tab to focus"
     };
     f.render_widget(
         Paragraph::new(lines)
-            .block(panel(panel_title(title, colors), colors))
+            .block(panel(
+                panel_title(title, is_focused, colors),
+                is_focused,
+                colors,
+            ))
             .style(Style::default().fg(colors.text))
             .scroll((app.detail_scroll, 0))
             .wrap(Wrap { trim: false }),
@@ -748,27 +835,64 @@ fn wrapped_line_count(lines: &[Line<'_>], width: usize) -> usize {
 }
 
 fn draw_footer(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
-    let mut help = vec![
-        shortcut("h", "landing", colors),
-        shortcut("Tab", focus_label(app.focus), colors),
-        shortcut("↑/↓", "move/scroll", colors),
-        shortcut("←/→", "evidence", colors),
-        shortcut("r", "reload", colors),
-        shortcut("t", "theme", colors),
-        shortcut("?", "help", colors),
-        shortcut("q", "quit", colors),
-        separator(colors),
-        Span::styled(
-            format!(" {} ", app.theme.label().to_ascii_lowercase()),
-            Style::default().fg(colors.muted),
-        ),
-    ];
-    if let Some(status) = &app.status {
+    let mut help = if app.show_landing {
+        vec![
+            shortcut("h", "console", colors),
+            shortcut("1-4", "sources", colors),
+            shortcut("r", "reload", colors),
+            shortcut("t", "theme", colors),
+            shortcut("?", "help", colors),
+            shortcut("q", "quit", colors),
+        ]
+    } else {
+        let nav_action = match app.focus {
+            FocusPane::Incidents => "select",
+            FocusPane::Details | FocusPane::Evidence => "scroll",
+        };
+        let mut items = vec![
+            shortcut("h", "landing", colors),
+            shortcut("Tab", focus_label(app.focus), colors),
+            shortcut("↑/↓", nav_action, colors),
+        ];
+        if app.focus == FocusPane::Evidence {
+            items.push(shortcut("←/→", "h-scroll", colors));
+        }
+        items.extend([
+            shortcut("r", "reload", colors),
+            shortcut("t", "theme", colors),
+            shortcut("?", "help", colors),
+            shortcut("q", "quit", colors),
+        ]);
+        items
+    };
+
+    help.push(separator(colors));
+    help.push(Span::styled(
+        format!(" {} ", app.theme.label().to_ascii_lowercase()),
+        Style::default().fg(colors.muted),
+    ));
+
+    if app.is_loading {
         help.push(separator(colors));
+        help.push(Span::styled(
+            format!(" ⏳ SCANNING: {} ", app.loading_message),
+            Style::default()
+                .fg(colors.warning)
+                .add_modifier(Modifier::BOLD),
+        ));
+    } else if let Some(status) = &app.status {
+        help.push(separator(colors));
+        let status_color = if status.contains("0 event") || status.contains("CLEAN") {
+            colors.good
+        } else if status.contains("Failed") || status.contains("❌") {
+            colors.critical
+        } else {
+            colors.warning
+        };
         help.push(Span::styled(
             format!(" {status} "),
             Style::default()
-                .fg(colors.warning)
+                .fg(status_color)
                 .add_modifier(Modifier::BOLD),
         ));
     }
@@ -810,7 +934,7 @@ fn draw_help(f: &mut Frame, area: Rect, colors: Palette) {
     f.render_widget(Clear, popup);
     f.render_widget(
         Paragraph::new(lines)
-            .block(panel(panel_title("HELP", colors), colors))
+            .block(panel(panel_title("HELP", false, colors), false, colors))
             .style(Style::default().bg(colors.panel).fg(colors.text)),
         popup,
     );
@@ -1403,8 +1527,61 @@ mod tests {
     }
 
     #[test]
+    fn footer_displays_contextual_keybinds_per_page() {
+        let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
+
+        // 1. Landing Page footer
+        let mut app_landing = App::new(
+            vec![],
+            "test log".to_string(),
+            SourceOptions::default(),
+            None,
+        );
+        terminal
+            .draw(|frame| draw(frame, &mut app_landing))
+            .unwrap();
+        let landing_out: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+        assert!(landing_out.contains("h:console"));
+        assert!(landing_out.contains("1-4:sources"));
+        assert!(!landing_out.contains("Tab:incidents"));
+
+        // 2. Incident Console footer
+        let mut app_console = App::new(
+            vec![event(true, true)],
+            "test log".to_string(),
+            SourceOptions::default(),
+            None,
+        );
+        terminal
+            .draw(|frame| draw(frame, &mut app_console))
+            .unwrap();
+        let console_out: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+        assert!(console_out.contains("h:landing"));
+        assert!(console_out.contains("Tab:incidents"));
+    }
+
+    #[test]
     fn long_investigations_render_a_visible_scrollbar() {
         let output = render(140, 20, event(true, true), false);
         assert!(output.contains('█'));
+    }
+
+    #[test]
+    fn incidents_list_is_numbered_and_focused_pane_is_highlighted() {
+        let output = render(140, 40, event(true, true), false);
+        assert!(output.contains("#1"));
+        assert!(output.contains("▶ INCIDENTS"));
     }
 }
