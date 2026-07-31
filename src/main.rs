@@ -204,13 +204,44 @@ fn event_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut A
                     KeyCode::Char('G') if app.focus == FocusPane::Details => {
                         app.scroll_details_to(true)
                     }
-                    KeyCode::Char('r') => reload(app),
+                    KeyCode::Char('r') => {
+                        app.is_loading = true;
+                        app.loading_message = "reloading current log source...".to_string();
+                        terminal.draw(|f| ui::draw(f, app))?;
+                        reload(app);
+                        app.is_loading = false;
+                    }
                     KeyCode::Char('t') => app.cycle_theme(),
                     KeyCode::Char('h') | KeyCode::Home => app.toggle_landing(),
-                    KeyCode::Char('1') => load_quick_source(app, QuickSource::CurrentBoot),
-                    KeyCode::Char('2') => load_quick_source(app, QuickSource::AllBoots),
-                    KeyCode::Char('3') => load_quick_source(app, QuickSource::PrevBoot),
-                    KeyCode::Char('4') => load_quick_source(app, QuickSource::SampleLog),
+                    KeyCode::Char('1') => {
+                        app.is_loading = true;
+                        app.loading_message = "scanning journalctl -k (boot 0)...".to_string();
+                        terminal.draw(|f| ui::draw(f, app))?;
+                        load_quick_source(app, QuickSource::CurrentBoot);
+                        app.is_loading = false;
+                    }
+                    KeyCode::Char('2') => {
+                        app.is_loading = true;
+                        app.loading_message = "scanning journalctl --all-boots...".to_string();
+                        terminal.draw(|f| ui::draw(f, app))?;
+                        load_quick_source(app, QuickSource::AllBoots);
+                        app.is_loading = false;
+                    }
+                    KeyCode::Char('3') => {
+                        app.is_loading = true;
+                        app.loading_message =
+                            "scanning journalctl -b -1 (prev boot)...".to_string();
+                        terminal.draw(|f| ui::draw(f, app))?;
+                        load_quick_source(app, QuickSource::PrevBoot);
+                        app.is_loading = false;
+                    }
+                    KeyCode::Char('4') => {
+                        app.is_loading = true;
+                        app.loading_message = "loading examples/sample-oom.log...".to_string();
+                        terminal.draw(|f| ui::draw(f, app))?;
+                        load_quick_source(app, QuickSource::SampleLog);
+                        app.is_loading = false;
+                    }
                     _ => {}
                 }
             }
@@ -267,11 +298,14 @@ fn load_source_options(app: &mut App, opts: SourceOptions) {
             timestamp::resolve_all(&mut events, boot_time, chrono::Local::now());
 
             let count = events.len();
+            let desc = source.description.clone();
             app.events = events;
             app.source_options = opts;
             app.source_description = source.description;
             app.warning = source.warning;
-            app.status = Some(format!("✓ scan successful — {count} event(s) loaded"));
+            app.status = Some(format!(
+                "✓ Scan complete for '{desc}' — {count} event(s) found"
+            ));
 
             if !app.events.is_empty() {
                 let index = previously_selected
@@ -283,7 +317,7 @@ fn load_source_options(app: &mut App, opts: SourceOptions) {
             }
         }
         Err(error) => {
-            app.status = Some(format!("❌ scan failed: {error}"));
+            app.status = Some(format!("❌ Scan failed: {error}"));
         }
     }
 }

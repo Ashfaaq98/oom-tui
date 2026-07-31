@@ -325,27 +325,36 @@ fn draw_landing_hero(f: &mut Frame, area: Rect, colors: Palette) {
 fn draw_landing_system(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
     let mut lines = vec![
         section("HOST ENVIRONMENT SPECS", colors),
-        detail_row("OS Release", &app.device.os, colors.text, colors),
-        detail_row("Processor", &app.device.cpu, colors.text, colors),
-        detail_row("Graphics", &app.device.gpu, colors.text, colors),
-        detail_row("System RAM", &app.device.ram, colors.accent, colors),
+        spec_row("OS Release", &app.device.os, colors.text, colors),
+        spec_row("Processor", &app.device.cpu, colors.text, colors),
+        spec_row("Graphics", &app.device.gpu, colors.text, colors),
+        spec_row("System RAM", &app.device.ram, colors.accent, colors),
         Line::from(""),
         section("ACTIVE LOG SOURCE STATUS", colors),
-        detail_row(
+        spec_row(
             "Target Source",
-            truncate_to_width(
-                &app.source_description,
-                area.width.saturating_sub(20) as usize,
-            ),
+            &app.source_description,
             colors.text,
             colors,
         ),
     ];
 
-    if app.events.is_empty() {
+    if app.is_loading {
         lines.push(Line::from(""));
         lines.push(Line::styled(
-            "  ● SYSTEM HEALTH: CLEAN",
+            "  ⏳ SCANNING LOG SOURCE IN BACKGROUND...",
+            Style::default()
+                .fg(colors.warning)
+                .add_modifier(Modifier::BOLD),
+        ));
+        lines.push(Line::styled(
+            format!("  {}", app.loading_message),
+            Style::default().fg(colors.accent),
+        ));
+    } else if app.events.is_empty() {
+        lines.push(Line::from(""));
+        lines.push(Line::styled(
+            "  ● SYSTEM HEALTH: CLEAN (0 OOM Kills)",
             Style::default()
                 .fg(colors.good)
                 .add_modifier(Modifier::BOLD),
@@ -390,6 +399,18 @@ fn draw_landing_system(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
             .wrap(Wrap { trim: false }),
         area,
     );
+}
+
+fn spec_row(label: &str, value: &str, value_color: Color, colors: Palette) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(
+            format!("  {label:<14} "),
+            Style::default()
+                .fg(colors.muted)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(value.to_string(), Style::default().fg(value_color)),
+    ])
 }
 
 fn draw_landing_quick_actions(f: &mut Frame, area: Rect, colors: Palette) {
@@ -790,12 +811,27 @@ fn draw_footer(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
         Style::default().fg(colors.muted),
     ));
 
-    if let Some(status) = &app.status {
+    if app.is_loading {
         help.push(separator(colors));
+        help.push(Span::styled(
+            format!(" ⏳ SCANNING: {} ", app.loading_message),
+            Style::default()
+                .fg(colors.warning)
+                .add_modifier(Modifier::BOLD),
+        ));
+    } else if let Some(status) = &app.status {
+        help.push(separator(colors));
+        let status_color = if status.contains("0 event") || status.contains("CLEAN") {
+            colors.good
+        } else if status.contains("Failed") || status.contains("❌") {
+            colors.critical
+        } else {
+            colors.warning
+        };
         help.push(Span::styled(
             format!(" {status} "),
             Style::default()
-                .fg(colors.warning)
+                .fg(status_color)
                 .add_modifier(Modifier::BOLD),
         ));
     }
