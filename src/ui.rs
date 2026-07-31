@@ -57,6 +57,18 @@ fn palette(theme: Theme) -> Palette {
             warning: Color::Rgb(250, 189, 47),
             good: Color::Rgb(184, 187, 38),
         },
+        Theme::Catppuccin => Palette {
+            surface: Color::Rgb(30, 30, 46),
+            panel: Color::Rgb(24, 24, 37),
+            border: Color::Rgb(108, 112, 134),
+            muted: Color::Rgb(166, 173, 200),
+            text: Color::Rgb(205, 214, 244),
+            selection: Color::Rgb(137, 180, 250),
+            accent: Color::Rgb(203, 166, 247),
+            critical: Color::Rgb(243, 139, 168),
+            warning: Color::Rgb(249, 226, 175),
+            good: Color::Rgb(166, 227, 161),
+        },
     }
 }
 
@@ -67,7 +79,19 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Block::default().style(Style::default().bg(colors.surface)),
         area,
     );
-    if area.width >= 90 {
+    if app.show_landing {
+        let root = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(4),
+                Constraint::Min(0),
+                Constraint::Length(2),
+            ])
+            .split(area);
+        draw_header(f, root[0], app, colors);
+        draw_landing_page(f, root[1], app, colors);
+        draw_footer(f, root[2], app, colors);
+    } else if area.width >= 90 {
         let root = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -137,6 +161,11 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
         .map(|index| index + 1)
         .unwrap_or(0);
     let selected_scope = app.selected().map(scope_short).unwrap_or("no incident");
+    let mode_label = if app.show_landing {
+        "LANDING DASHBOARD"
+    } else {
+        "INCIDENT CONSOLE"
+    };
     let title = Line::from(vec![
         Span::styled(
             " OOM",
@@ -145,7 +174,7 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
-            " INCIDENT CONSOLE",
+            " INCIDENT FORENSICS",
             Style::default()
                 .fg(colors.text)
                 .add_modifier(Modifier::BOLD),
@@ -154,6 +183,13 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
         Span::styled(
             format!("v{}", env!("CARGO_PKG_VERSION")),
             Style::default().fg(colors.muted),
+        ),
+        Span::styled("  │  ", Style::default().fg(colors.muted)),
+        Span::styled(
+            format!("[ MODE: {mode_label} ]"),
+            Style::default()
+                .fg(colors.accent)
+                .add_modifier(Modifier::BOLD),
         ),
     ]);
     let context = Line::from(vec![
@@ -169,6 +205,11 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
         Span::styled(
             format!(" {cgroup_count} CGROUP "),
             Style::default().fg(colors.muted),
+        ),
+        separator(colors),
+        Span::styled(
+            format!(" {} ", app.device.ram),
+            Style::default().fg(colors.accent),
         ),
     ]);
     let viewing = vec![
@@ -194,6 +235,265 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
                     .borders(Borders::BOTTOM)
                     .border_style(Style::default().fg(colors.border)),
             ),
+        area,
+    );
+}
+
+fn draw_landing_page(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
+    if area.width >= 80 && area.height >= 16 {
+        let columns = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(54), Constraint::Percentage(46)])
+            .split(area);
+
+        let left_rows = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(9), Constraint::Min(0)])
+            .split(columns[0]);
+
+        draw_landing_hero(f, left_rows[0], colors);
+        draw_landing_system(f, left_rows[1], app, colors);
+
+        let right_rows = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(11), Constraint::Min(0)])
+            .split(columns[1]);
+
+        draw_landing_quick_actions(f, right_rows[0], colors);
+        draw_landing_guide(f, right_rows[1], colors);
+    } else {
+        let rows = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(7),
+                Constraint::Length(10),
+                Constraint::Min(0),
+            ])
+            .split(area);
+        draw_landing_hero(f, rows[0], colors);
+        draw_landing_quick_actions(f, rows[1], colors);
+        draw_landing_system(f, rows[2], app, colors);
+    }
+}
+
+fn draw_landing_hero(f: &mut Frame, area: Rect, colors: Palette) {
+    let logo = vec![
+        Line::styled(
+            r"  ██████╗  ██████╗ ███╗   ███╗  ████████╗██╗██╗",
+            Style::default()
+                .fg(colors.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Line::styled(
+            r" ██╔═══██╗██╔═══██╗████╗ ████║  ╚══██╔══╝██║██║",
+            Style::default()
+                .fg(colors.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Line::styled(
+            r" ██║   ██║██║   ██║██╔████╔██║     ██║   ██║██║",
+            Style::default().fg(colors.accent),
+        ),
+        Line::styled(
+            r" ╚██████╔╝╚██████╔╝██║ ╚═╝ ██║     ██║   ██║██║",
+            Style::default().fg(colors.border),
+        ),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(
+                " Linux Kernel OOM Incident Forensics Console ",
+                Style::default()
+                    .fg(colors.text)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("v{}", env!("CARGO_PKG_VERSION")),
+                Style::default().fg(colors.muted),
+            ),
+        ]),
+        Line::styled(
+            " Reconstructs scattered kernel log lines into precise incident evidence.",
+            Style::default().fg(colors.muted),
+        ),
+    ];
+    f.render_widget(
+        Paragraph::new(logo).block(panel(panel_title("WELCOME TO OOM-TUI", colors), colors)),
+        area,
+    );
+}
+
+fn draw_landing_system(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
+    let mut lines = vec![
+        section("HOST ENVIRONMENT SPECS", colors),
+        detail_row("Operating System", &app.device.os, colors.text, colors),
+        detail_row("CPU Architecture", &app.device.cpu, colors.text, colors),
+        detail_row("Graphics Adapter", &app.device.gpu, colors.text, colors),
+        detail_row("Total System RAM", &app.device.ram, colors.accent, colors),
+        Line::from(""),
+        section("ACTIVE LOG SOURCE STATUS", colors),
+        detail_row(
+            "Target Source",
+            truncate_to_width(
+                &app.source_description,
+                area.width.saturating_sub(20) as usize,
+            ),
+            colors.text,
+            colors,
+        ),
+    ];
+
+    if app.events.is_empty() {
+        lines.push(Line::from(""));
+        lines.push(Line::styled(
+            "  ● SYSTEM HEALTH: CLEAN",
+            Style::default()
+                .fg(colors.good)
+                .add_modifier(Modifier::BOLD),
+        ));
+        lines.push(Line::styled(
+            "  No Out-Of-Memory kills detected in current kernel log window.",
+            Style::default().fg(colors.muted),
+        ));
+    } else {
+        lines.push(Line::from(""));
+        lines.push(Line::styled(
+            format!("  ● ALERT: {} OOM INCIDENT(S) LOADED", app.events.len()),
+            Style::default()
+                .fg(colors.critical)
+                .add_modifier(Modifier::BOLD),
+        ));
+        lines.push(Line::styled(
+            "  Press 'h' to open the Master-Detail Incident Console.",
+            Style::default().fg(colors.accent),
+        ));
+    }
+
+    if let Some(warning) = &app.warning {
+        lines.push(Line::from(""));
+        lines.push(Line::styled(
+            format!("  ⚠ Warning: {warning}"),
+            Style::default().fg(colors.warning),
+        ));
+    }
+
+    f.render_widget(
+        Paragraph::new(lines)
+            .block(panel(
+                panel_title("SYSTEM & HEALTH MONITOR", colors),
+                colors,
+            ))
+            .wrap(Wrap { trim: false }),
+        area,
+    );
+}
+
+fn draw_landing_quick_actions(f: &mut Frame, area: Rect, colors: Palette) {
+    let lines = vec![
+        Line::styled(
+            " Press hotkey to query log source:",
+            Style::default().fg(colors.muted),
+        ),
+        Line::from(""),
+        quick_action_item(
+            "1",
+            "Scan Current Boot Journal",
+            "journalctl -k (boot 0)",
+            colors,
+        ),
+        quick_action_item(
+            "2",
+            "Scan All Journal Boots",
+            "journalctl --all-boots",
+            colors,
+        ),
+        quick_action_item("3", "Inspect Previous Boot", "journalctl -b -1", colors),
+        quick_action_item(
+            "4",
+            "Load Sample OOM Log File",
+            "examples/sample-oom.log",
+            colors,
+        ),
+        quick_action_item("h", "Toggle Incident Console", "Master-Detail view", colors),
+        quick_action_item(
+            "t",
+            "Cycle Theme Palette",
+            "Midnight/Gruvbox/Catppuccin",
+            colors,
+        ),
+        quick_action_item("?", "Keybind Shortcuts Guide", "Help popup modal", colors),
+    ];
+
+    f.render_widget(
+        Paragraph::new(lines).block(panel(
+            panel_title("QUICK ACTIONS & SOURCES", colors),
+            colors,
+        )),
+        area,
+    );
+}
+
+fn quick_action_item(
+    key: &'static str,
+    title: &'static str,
+    desc: &'static str,
+    colors: Palette,
+) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(
+            format!(" [{key}] "),
+            Style::default()
+                .fg(colors.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!("{title:<26}"),
+            Style::default()
+                .fg(colors.text)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(format!(" {desc}"), Style::default().fg(colors.muted)),
+    ])
+}
+
+fn draw_landing_guide(f: &mut Frame, area: Rect, colors: Palette) {
+    let lines = vec![
+        section("HOW OOM-TUI FORENSICS WORKS", colors),
+        Line::styled(
+            " • Host vs Cgroup:",
+            Style::default()
+                .fg(colors.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Line::styled(
+            "   Differentiates host-wide exhaustion from cgroup limit breaches.",
+            Style::default().fg(colors.text),
+        ),
+        Line::from(""),
+        Line::styled(
+            " • Culprit Identification:",
+            Style::default()
+                .fg(colors.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Line::styled(
+            "   Flags when victim process was collateral damage rather than culprit.",
+            Style::default().fg(colors.text),
+        ),
+        Line::from(""),
+        Line::styled(
+            " • Raw Kernel Evidence:",
+            Style::default()
+                .fg(colors.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Line::styled(
+            "   Preserves exact dmesg / journal lines for audit and proof.",
+            Style::default().fg(colors.text),
+        ),
+    ];
+
+    f.render_widget(
+        Paragraph::new(lines).block(panel(panel_title("FORENSICS CHEAT-SHEET", colors), colors)),
         area,
     );
 }
@@ -322,18 +622,34 @@ fn draw_raw_evidence(f: &mut Frame, area: Rect, app: &mut App, colors: Palette) 
 
 fn timeline_item(event: &OomEvent, width: usize, colors: Palette) -> ListItem<'static> {
     let impact = impact(event);
+    let ram_bar = match event.rss_share_of_ram() {
+        Some(pct) => {
+            let filled = ((pct / 100.0) * 5.0).clamp(0.0, 5.0) as usize;
+            format!(
+                " [ {}{} {:.0}% ]",
+                "█".repeat(filled),
+                "░".repeat(5 - filled),
+                pct
+            )
+        }
+        None => "".to_string(),
+    };
     let first = format!(
-        "{} {:<4} {} · PID {} · {}",
+        "{} {:<4} {} · PID {}{}",
         impact.marker(),
         impact.label(),
         event.victim_name,
         event.victim_pid,
-        memory(event.rss_total_kb())
+        ram_bar
     );
     let second = format!(
-        "  {} · {} · {}",
-        scope_short(event),
-        if event.reaped { "confirmed" } else { "pending" },
+        "  [{}] · {} · {}",
+        scope_short(event).to_ascii_uppercase(),
+        if event.reaped {
+            "✓ reaped"
+        } else {
+            "⧖ pending"
+        },
         event.timestamp.as_deref().unwrap_or("unknown time")
     );
     ListItem::new(vec![
@@ -433,12 +749,13 @@ fn wrapped_line_count(lines: &[Line<'_>], width: usize) -> usize {
 
 fn draw_footer(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
     let mut help = vec![
+        shortcut("h", "landing", colors),
         shortcut("Tab", focus_label(app.focus), colors),
         shortcut("↑/↓", "move/scroll", colors),
         shortcut("←/→", "evidence", colors),
         shortcut("r", "reload", colors),
-        shortcut("?", "help", colors),
         shortcut("t", "theme", colors),
+        shortcut("?", "help", colors),
         shortcut("q", "quit", colors),
         separator(colors),
         Span::styled(
@@ -464,7 +781,7 @@ fn draw_footer(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
 }
 
 fn draw_help(f: &mut Frame, area: Rect, colors: Palette) {
-    let popup = centered_rect(72, 16, area);
+    let popup = centered_rect(74, 18, area);
     let lines = vec![
         Line::styled(
             " Navigation",
@@ -472,6 +789,7 @@ fn draw_help(f: &mut Frame, area: Rect, colors: Palette) {
                 .fg(colors.accent)
                 .add_modifier(Modifier::BOLD),
         ),
+        Line::from(" h / Home  toggle landing page dashboard"),
         Line::from(" Tab       cycle incidents, investigation, evidence"),
         Line::from(" ↑/↓      select an incident or scroll focused pane"),
         Line::from(" PgUp/PgDn, g/G  fast scroll focused pane"),
@@ -483,21 +801,11 @@ fn draw_help(f: &mut Frame, area: Rect, colors: Palette) {
                 .fg(colors.accent)
                 .add_modifier(Modifier::BOLD),
         ),
-        Line::from(" r         reload source"),
-        Line::from(" t         cycle theme"),
-        Line::from(" ? / Esc   close help"),
-        Line::from(" q         quit"),
-        Line::from(""),
-        Line::styled(
-            " Search",
-            Style::default()
-                .fg(colors.muted)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Line::styled(
-            " Search shortcuts are planned; use evidence scrolling today.",
-            Style::default().fg(colors.muted),
-        ),
+        Line::from(" 1 - 4     quick switch log sources (1:current, 2:all, 3:prev, 4:sample)"),
+        Line::from(" r         reload current log source"),
+        Line::from(" t         cycle theme (Midnight -> Gruvbox -> Catppuccin)"),
+        Line::from(" ? / Esc   close help popup"),
+        Line::from(" q         quit application"),
     ];
     f.render_widget(Clear, popup);
     f.render_widget(
@@ -667,23 +975,38 @@ fn swap(event: &OomEvent) -> String {
 
 fn detail_lines(event: &OomEvent, colors: Palette) -> Vec<Line<'static>> {
     let investigation = investigate(event);
-    let mut lines = vec![
-        section("SUMMARY", colors),
-        detail_row(
-            "Victim",
-            format!("{} (PID {})", event.victim_name, event.victim_pid),
-            colors.text,
-            colors,
-        ),
-        detail_row(
-            "Impact",
-            format!("{} {}", impact(event).marker(), impact(event).label()),
-            impact(event).color(colors),
-            colors,
-        ),
-        detail_row("Cause", scope_label(event), colors.text, colors),
-        detail_row("Scope", scope_short(event), colors.text, colors),
-    ];
+    let mut lines = Vec::new();
+
+    if event.victim_was_largest() == Some(false) {
+        if let Some(top) = event.top_consumers(1).first() {
+            lines.push(Line::styled(
+                format!(
+                    " ⚠ CULPRIT MISMATCH: Victim was collateral damage! Real culprit: {} (PID {})",
+                    top.name, top.pid
+                ),
+                Style::default()
+                    .fg(colors.critical)
+                    .add_modifier(Modifier::BOLD),
+            ));
+            lines.push(Line::from(""));
+        }
+    }
+
+    lines.push(section("SUMMARY", colors));
+    lines.push(detail_row(
+        "Victim",
+        format!("{} (PID {})", event.victim_name, event.victim_pid),
+        colors.text,
+        colors,
+    ));
+    lines.push(detail_row(
+        "Impact",
+        format!("{} {}", impact(event).marker(), impact(event).label()),
+        impact(event).color(colors),
+        colors,
+    ));
+    lines.push(detail_row("Cause", scope_label(event), colors.text, colors));
+    lines.push(detail_row("Scope", scope_short(event), colors.text, colors));
     lines.extend(
         investigation
             .summary
@@ -733,6 +1056,19 @@ fn detail_lines(event: &OomEvent, colors: Palette) -> Vec<Line<'static>> {
         ),
         detail_row("Swap", swap(event), colors.muted, colors),
     ]);
+
+    if let Some(pct) = event.rss_share_of_ram() {
+        let bar_len = 20;
+        let filled = ((pct / 100.0) * bar_len as f64).clamp(0.0, bar_len as f64) as usize;
+        let bar = format!(
+            "[{}{}] {:.1}% of system RAM",
+            "█".repeat(filled),
+            "░".repeat(bar_len - filled),
+            pct
+        );
+        lines.push(detail_row("RAM Impact", bar, colors.warning, colors));
+    }
+
     lines.push(Line::from(""));
     lines.push(section("SYSTEM", colors));
     lines.extend([
@@ -1022,7 +1358,7 @@ mod tests {
 
     #[test]
     fn layouts_render_investigation_sections() {
-        for (width, height) in [(140, 40), (100, 30), (70, 24)] {
+        for (width, height) in [(140, 50), (100, 45), (70, 45)] {
             let output = render(width, height, event(true, true), false);
             assert!(output.contains("SUMMARY"));
             assert!(output.contains("DIAGNOSIS"));
@@ -1041,7 +1377,29 @@ mod tests {
     fn help_overlay_is_available_without_replacing_the_console() {
         let output = render(140, 40, event(false, false), true);
         assert!(output.contains("HELP"));
-        assert!(output.contains("Search shortcuts are planned"));
+        assert!(output.contains("quick switch log sources"));
+    }
+
+    #[test]
+    fn landing_page_renders_welcome_dashboard() {
+        let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
+        let mut app = App::new(
+            vec![],
+            "test log".to_string(),
+            SourceOptions::default(),
+            None,
+        );
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        let output: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+        assert!(output.contains("WELCOME TO OOM-TUI"));
+        assert!(output.contains("SYSTEM & HEALTH MONITOR"));
+        assert!(output.contains("QUICK ACTIONS"));
     }
 
     #[test]

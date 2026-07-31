@@ -206,6 +206,11 @@ fn event_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut A
                     }
                     KeyCode::Char('r') => reload(app),
                     KeyCode::Char('t') => app.cycle_theme(),
+                    KeyCode::Char('h') | KeyCode::Home => app.toggle_landing(),
+                    KeyCode::Char('1') => load_quick_source(app, QuickSource::CurrentBoot),
+                    KeyCode::Char('2') => load_quick_source(app, QuickSource::AllBoots),
+                    KeyCode::Char('3') => load_quick_source(app, QuickSource::PrevBoot),
+                    KeyCode::Char('4') => load_quick_source(app, QuickSource::SampleLog),
                     _ => {}
                 }
             }
@@ -213,28 +218,73 @@ fn event_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut A
     }
 }
 
-/// Re-read from whatever source the app was launched with. A failed reload
-/// must never take down the TUI: the events already on screen are still the
-/// evidence the user came for, so the error becomes a status message.
+enum QuickSource {
+    CurrentBoot,
+    AllBoots,
+    PrevBoot,
+    SampleLog,
+}
+
+fn load_quick_source(app: &mut App, source: QuickSource) {
+    let opts = match source {
+        QuickSource::CurrentBoot => SourceOptions {
+            boot: BootScope::Offset(0),
+            ..Default::default()
+        },
+        QuickSource::AllBoots => SourceOptions {
+            boot: BootScope::All,
+            ..Default::default()
+        },
+        QuickSource::PrevBoot => SourceOptions {
+            boot: BootScope::Offset(-1),
+            ..Default::default()
+        },
+        QuickSource::SampleLog => SourceOptions {
+            file: Some("examples/sample-oom.log".to_string()),
+            ..Default::default()
+        },
+    };
+    load_source_options(app, opts);
+}
+
+/// Re-read from a log source. A failed reload must never take down the TUI:
+/// the events already on screen remain accessible, and the error is reported via status.
 fn reload(app: &mut App) {
+    load_source_options(app, app.source_options.clone());
+}
+
+fn load_source_options(app: &mut App, opts: SourceOptions) {
     let previously_selected = app.selected().map(|e| e.victim_pid);
 
-    match source::load(&app.source_options) {
+    match source::load(&opts) {
         Ok(source) => {
-            app.events = parser::parse_log(&source.text);
+            let mut events = parser::parse_log(&source.text);
+            let boot_time = if source.is_live_local {
+                timestamp::local_boot_time()
+            } else {
+                None
+            };
+            timestamp::resolve_all(&mut events, boot_time, chrono::Local::now());
+
+            let count = events.len();
+            app.events = events;
+            app.source_options = opts;
             app.source_description = source.description;
             app.warning = source.warning;
-            app.status = Some(format!("reloaded — {} events", app.events.len()));
+            app.status = Some(format!("loaded source — {count} event(s)"));
 
-            // Keep the cursor on the same kill if it survived the reload,
-            // otherwise fall back to the newest.
-            let index = previously_selected
-                .and_then(|pid| app.events.iter().position(|e| e.victim_pid == pid))
-                .or_else(|| app.events.len().checked_sub(1));
-            app.list_state.select(index);
+            if !app.events.is_empty() {
+                app.show_landing = false;
+                let index = previously_selected
+                    .and_then(|pid| app.events.iter().position(|e| e.victim_pid == pid))
+                    .or_else(|| app.events.len().checked_sub(1));
+                app.list_state.select(index);
+            } else {
+                app.list_state.select(None);
+            }
         }
         Err(error) => {
-            app.status = Some(format!("reload failed: {error}"));
+            app.status = Some(format!("source load failed: {error}"));
         }
     }
 }

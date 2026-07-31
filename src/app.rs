@@ -14,13 +14,15 @@ pub enum FocusPane {
 pub enum Theme {
     Midnight,
     Gruvbox,
+    Catppuccin,
 }
 
 impl Theme {
     pub fn next(self) -> Self {
         match self {
             Self::Midnight => Self::Gruvbox,
-            Self::Gruvbox => Self::Midnight,
+            Self::Gruvbox => Self::Catppuccin,
+            Self::Catppuccin => Self::Midnight,
         }
     }
 
@@ -28,6 +30,7 @@ impl Theme {
         match self {
             Self::Midnight => "MIDNIGHT",
             Self::Gruvbox => "GRUVBOX",
+            Self::Catppuccin => "CATPPUCCIN",
         }
     }
 }
@@ -45,6 +48,7 @@ pub struct App {
     detail_max_scroll: u16,
     pub focus: FocusPane,
     pub help_visible: bool,
+    pub show_landing: bool,
     pub theme: Theme,
     pub device: DeviceInfo,
     pub status: Option<String>,
@@ -66,6 +70,7 @@ impl App {
         if !events.is_empty() {
             list_state.select(Some(events.len() - 1)); // most recent by default
         }
+        let show_landing = events.is_empty();
         Self {
             events,
             list_state,
@@ -78,12 +83,17 @@ impl App {
             detail_max_scroll: 0,
             focus: FocusPane::Incidents,
             help_visible: false,
+            show_landing,
             theme: Theme::Midnight,
             device: DeviceInfo::detect(),
             status: None,
             source_options,
             warning,
         }
+    }
+
+    pub fn toggle_landing(&mut self) {
+        self.show_landing = !self.show_landing;
     }
 
     pub fn selected(&self) -> Option<&OomEvent> {
@@ -269,6 +279,8 @@ mod tests {
         assert_eq!(app.theme, Theme::Midnight);
         app.cycle_theme();
         assert_eq!(app.theme, Theme::Gruvbox);
+        app.cycle_theme();
+        assert_eq!(app.theme, Theme::Catppuccin);
         app.cycle_theme();
         assert_eq!(app.theme, Theme::Midnight);
     }
