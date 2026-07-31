@@ -748,21 +748,43 @@ fn wrapped_line_count(lines: &[Line<'_>], width: usize) -> usize {
 }
 
 fn draw_footer(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
-    let mut help = vec![
-        shortcut("h", "landing", colors),
-        shortcut("Tab", focus_label(app.focus), colors),
-        shortcut("↑/↓", "move/scroll", colors),
-        shortcut("←/→", "evidence", colors),
-        shortcut("r", "reload", colors),
-        shortcut("t", "theme", colors),
-        shortcut("?", "help", colors),
-        shortcut("q", "quit", colors),
-        separator(colors),
-        Span::styled(
-            format!(" {} ", app.theme.label().to_ascii_lowercase()),
-            Style::default().fg(colors.muted),
-        ),
-    ];
+    let mut help = if app.show_landing {
+        vec![
+            shortcut("h", "console", colors),
+            shortcut("1-4", "sources", colors),
+            shortcut("r", "reload", colors),
+            shortcut("t", "theme", colors),
+            shortcut("?", "help", colors),
+            shortcut("q", "quit", colors),
+        ]
+    } else {
+        let nav_action = match app.focus {
+            FocusPane::Incidents => "select",
+            FocusPane::Details | FocusPane::Evidence => "scroll",
+        };
+        let mut items = vec![
+            shortcut("h", "landing", colors),
+            shortcut("Tab", focus_label(app.focus), colors),
+            shortcut("↑/↓", nav_action, colors),
+        ];
+        if app.focus == FocusPane::Evidence {
+            items.push(shortcut("←/→", "h-scroll", colors));
+        }
+        items.extend([
+            shortcut("r", "reload", colors),
+            shortcut("t", "theme", colors),
+            shortcut("?", "help", colors),
+            shortcut("q", "quit", colors),
+        ]);
+        items
+    };
+
+    help.push(separator(colors));
+    help.push(Span::styled(
+        format!(" {} ", app.theme.label().to_ascii_lowercase()),
+        Style::default().fg(colors.muted),
+    ));
+
     if let Some(status) = &app.status {
         help.push(separator(colors));
         help.push(Span::styled(
@@ -1400,6 +1422,52 @@ mod tests {
         assert!(output.contains("WELCOME TO OOM-TUI"));
         assert!(output.contains("SYSTEM & HEALTH MONITOR"));
         assert!(output.contains("QUICK ACTIONS"));
+    }
+
+    #[test]
+    fn footer_displays_contextual_keybinds_per_page() {
+        let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
+
+        // 1. Landing Page footer
+        let mut app_landing = App::new(
+            vec![],
+            "test log".to_string(),
+            SourceOptions::default(),
+            None,
+        );
+        terminal
+            .draw(|frame| draw(frame, &mut app_landing))
+            .unwrap();
+        let landing_out: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+        assert!(landing_out.contains("h:console"));
+        assert!(landing_out.contains("1-4:sources"));
+        assert!(!landing_out.contains("Tab:incidents"));
+
+        // 2. Incident Console footer
+        let mut app_console = App::new(
+            vec![event(true, true)],
+            "test log".to_string(),
+            SourceOptions::default(),
+            None,
+        );
+        terminal
+            .draw(|frame| draw(frame, &mut app_console))
+            .unwrap();
+        let console_out: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+        assert!(console_out.contains("h:landing"));
+        assert!(console_out.contains("Tab:incidents"));
     }
 
     #[test]
