@@ -82,8 +82,7 @@ fn regexes() -> &'static Regexes {
             .unwrap(),
         // A row of the task dump. The column count varies by kernel version
         // (`nr_ptes`/`nr_pmds` on older kernels, `pgtables_bytes` on newer),
-        // so the fields are read positionally from both ends instead of
-        // pinning a fixed layout - see `parse_process_row`.
+        // so `parse_process_row` dynamically detects the numeric columns.
         proc_row: Regex::new(r"^\[\s*(?P<pid>\d+)\s*\]\s+(?P<rest>\S.*)$").unwrap(),
         pages_ram: Regex::new(r"^(?P<pages>\d+)\s+pages RAM").unwrap(),
         total_swap: Regex::new(r"^Total swap\s*=\s*(?P<kb>\d+)\s*kB").unwrap(),
@@ -120,9 +119,8 @@ fn strip_prefix(line: &str) -> (Option<String>, &str) {
 ///   [ pid ] uid tgid total_vm rss pgtables_bytes swapents oom_score_adj name
 ///   [ pid ] uid tgid total_vm rss nr_ptes nr_pmds   swapents oom_score_adj name
 ///
-/// Rather than guess which kernel produced the log, read the stable fields
-/// from the front and the stable fields from the back, and ignore whatever
-/// varies in the middle. That way a third layout doesn't break parsing.
+/// Rather than assume a fixed layout, we dynamically count the numeric columns
+/// to correctly isolate the process name, even if it contains spaces.
 fn parse_process_row(
     pid: u32,
     rest: &str,
@@ -521,7 +519,7 @@ mod tests {
     #[test]
     fn handles_the_older_nr_ptes_column_layout() {
         // Pre-4.19 kernels print nr_ptes and nr_pmds instead of pgtables_bytes,
-        // giving one extra column. Reading from both ends must absorb that.
+        // giving one extra column. The parser must dynamically detect this.
         let text = "[ 100.0] oom-kill:constraint=CONSTRAINT_NONE,nodemask=(null),task_memcg=/,task=x,pid=1,uid=0
 [ 100.1] [   1234]     0  1234    50000    40000     123     456        0           -100 dockerd
 [ 100.2] Out of memory: Killed process 1234 (dockerd) total-vm:200000kB, anon-rss:160000kB, file-rss:0kB, shmem-rss:0kB, UID:0 oom_score_adj:-100";
