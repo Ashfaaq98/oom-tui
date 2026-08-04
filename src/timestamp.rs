@@ -73,11 +73,9 @@ fn resolve(
                 let candidate = Local.from_local_datetime(&parsed).single()?;
                 // A "future" syslog date really means it is from last year - the
                 // classic New Year's Eve log-reading bug.
-                if candidate > now + Duration::days(1) {
-                    if year == now.year() {
-                        // It's in the future and we assumed the current year; it must be last year.
-                        continue;
-                    }
+                if candidate > now + Duration::days(1) && year == now.year() {
+                    // It's in the future and we assumed the current year; it must be last year.
+                    continue;
                 }
                 return Some(candidate);
             }

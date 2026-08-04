@@ -121,11 +121,7 @@ fn strip_prefix(line: &str) -> (Option<String>, &str) {
 ///
 /// Rather than assume a fixed layout, we dynamically count the numeric columns
 /// to correctly isolate the process name, even if it contains spaces.
-fn parse_process_row(
-    pid: u32,
-    rest: &str,
-    num_cols: &mut Option<usize>,
-) -> Option<ProcessEntry> {
+fn parse_process_row(pid: u32, rest: &str, num_cols: &mut Option<usize>) -> Option<ProcessEntry> {
     let tokens: Vec<&str> = rest.split_whitespace().collect();
     if tokens.len() < 7 {
         return None;
@@ -619,15 +615,3 @@ mod robustness {
         assert_eq!(p.rss_kb, 40000 * 4);
     }
 }
-
-    #[test]
-    fn parses_process_with_spaces_in_name() {
-        let text = "[ 100.0] oom-kill:constraint=CONSTRAINT_NONE,nodemask=(null),task_memcg=/,task=x,pid=1,uid=0
-[ 100.1] [   1234]     0  1234    50000    40000     123     456        0             -100 dockerd service test
-[ 100.2] Out of memory: Killed process 1234 (dockerd service test) total-vm:200000kB, anon-rss:160000kB, file-rss:0kB, shmem-rss:0kB, UID:0 oom_score_adj:-100";
-        let events = parse_log(text);
-        assert_eq!(events.len(), 1);
-        let p = &events[0].processes[0];
-        assert_eq!(p.name, "dockerd service test");
-        assert_eq!(p.rss_kb, 40000 * 4);
-    }
