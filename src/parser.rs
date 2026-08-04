@@ -123,14 +123,37 @@ fn strip_prefix(line: &str) -> (Option<String>, &str) {
 /// Rather than guess which kernel produced the log, read the stable fields
 /// from the front and the stable fields from the back, and ignore whatever
 /// varies in the middle. That way a third layout doesn't break parsing.
-fn parse_process_row(pid: u32, rest: &str) -> Option<ProcessEntry> {
+fn parse_process_row(
+    pid: u32,
+    rest: &str,
+    num_cols: &mut Option<usize>,
+) -> Option<ProcessEntry> {
     let tokens: Vec<&str> = rest.split_whitespace().collect();
-    // Front claims 0..=3 and back claims the final three; fewer than 7 columns
-    // means they would overlap and we'd invent values.
     if tokens.len() < 7 {
         return None;
     }
-    let last = tokens.len() - 1;
+
+    if num_cols.is_none() {
+        let mut count = 0;
+        for token in &tokens {
+            if token.parse::<i64>().is_ok() {
+                count += 1;
+            } else {
+                break;
+            }
+        }
+        // Older kernels use 8 columns, newer use 7.
+        if count == 7 || count == 8 {
+            *num_cols = Some(count);
+        } else {
+            *num_cols = Some(7);
+        }
+    }
+
+    let c = num_cols.unwrap();
+    if tokens.len() <= c {
+        return None; // Row truncated before name
+    }
 
     Some(ProcessEntry {
         pid,
@@ -138,9 +161,9 @@ fn parse_process_row(pid: u32, rest: &str) -> Option<ProcessEntry> {
         tgid: tokens[1].parse().ok()?,
         total_vm_kb: tokens[2].parse::<u64>().ok()?.saturating_mul(PAGE_SIZE_KB),
         rss_kb: tokens[3].parse::<u64>().ok()?.saturating_mul(PAGE_SIZE_KB),
-        swapents: tokens[last - 2].parse().ok()?,
-        oom_score_adj: tokens[last - 1].parse().ok()?,
-        name: tokens[last].to_string(),
+        swapents: tokens[c - 2].parse().ok()?,
+        oom_score_adj: tokens[c - 1].parse().ok()?,
+        name: tokens[c..].join(" "),
     })
 }
 
@@ -159,6 +182,7 @@ pub fn parse_log(text: &str) -> Vec<OomEvent> {
     let mut pending_limit_cgroup: Option<String> = None; // oom_memcg, when present
     let mut pending_raw: Vec<String> = Vec::new();
     let mut pending_processes: Vec<ProcessEntry> = Vec::new();
+    let mut pending_num_cols: Option<usize> = None;
     let mut pending_mem = MemInfo::default();
 
     for (i, raw_line) in lines.iter().enumerate() {
@@ -192,12 +216,16 @@ pub fn parse_log(text: &str) -> Vec<OomEvent> {
         // the kill line, so they accumulate the same way the trigger does.
         if let Some(caps) = re.proc_row.captures(body) {
             if let Ok(pid) = caps.name("pid").unwrap().as_str().parse::<u32>() {
-                if let Some(entry) = parse_process_row(pid, caps.name("rest").unwrap().as_str()) {
+                if let Some(entry) = parse_process_row(
+                    pid,
+                    caps.name("rest").unwrap().as_str(),
+                    &mut pending_num_cols,
+                ) {
                     pending_processes.push(entry);
-                    pending_raw.push(raw_line.to_string());
-                    continue;
                 }
             }
+            pending_raw.push(raw_line.to_string());
+            continue;
         }
 
         if let Some(caps) = re.pages_ram.captures(body) {
@@ -281,6 +309,7 @@ pub fn parse_log(text: &str) -> Vec<OomEvent> {
                 mem: (pending_mem != MemInfo::default()).then(|| std::mem::take(&mut pending_mem)),
                 raw_lines: std::mem::take(&mut pending_raw),
             };
+            pending_num_cols = None;
             events.push(event);
             continue;
         }
@@ -580,4 +609,27 @@ mod robustness {
         }
         assert!(parse_log(&log).is_empty());
     }
+    #[test]
+    fn parses_process_with_spaces_in_name() {
+        let text = "[ 100.0] oom-kill:constraint=CONSTRAINT_NONE,nodemask=(null),task_memcg=/,task=x,pid=1,uid=0
+[ 100.1] [   1234]     0  1234    50000    40000     123     456        0             -100 dockerd service test
+[ 100.2] Out of memory: Killed process 1234 (dockerd service test) total-vm:200000kB, anon-rss:160000kB, file-rss:0kB, shmem-rss:0kB, UID:0 oom_score_adj:-100";
+        let events = parse_log(text);
+        assert_eq!(events.len(), 1);
+        let p = &events[0].processes[0];
+        assert_eq!(p.name, "dockerd service test");
+        assert_eq!(p.rss_kb, 40000 * 4);
+    }
 }
+
+    #[test]
+    fn parses_process_with_spaces_in_name() {
+        let text = "[ 100.0] oom-kill:constraint=CONSTRAINT_NONE,nodemask=(null),task_memcg=/,task=x,pid=1,uid=0
+[ 100.1] [   1234]     0  1234    50000    40000     123     456        0             -100 dockerd service test
+[ 100.2] Out of memory: Killed process 1234 (dockerd service test) total-vm:200000kB, anon-rss:160000kB, file-rss:0kB, shmem-rss:0kB, UID:0 oom_score_adj:-100";
+        let events = parse_log(text);
+        assert_eq!(events.len(), 1);
+        let p = &events[0].processes[0];
+        assert_eq!(p.name, "dockerd service test");
+        assert_eq!(p.rss_kb, 40000 * 4);
+    }

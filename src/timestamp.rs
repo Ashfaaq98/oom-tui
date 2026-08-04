@@ -66,19 +66,21 @@ fn resolve(
 
     // Syslog style: no year at all, so infer one.
     for format in ["%b %e %H:%M:%S", "%b %d %H:%M:%S"] {
-        if let Ok(parsed) =
-            NaiveDateTime::parse_from_str(&format!("{raw} {}", now.year()), &format!("{format} %Y"))
-        {
-            let candidate = Local.from_local_datetime(&parsed).single()?;
-            // A "future" syslog date really means it is from last year - the
-            // classic New Year's Eve log-reading bug.
-            return Some(if candidate > now + Duration::days(1) {
-                Local
-                    .from_local_datetime(&parsed.with_year(now.year() - 1)?)
-                    .single()?
-            } else {
-                candidate
-            });
+        for year in [now.year(), now.year() - 1] {
+            let s = format!("{raw} {year}");
+            let f = format!("{format} %Y");
+            if let Ok(parsed) = NaiveDateTime::parse_from_str(&s, &f) {
+                let candidate = Local.from_local_datetime(&parsed).single()?;
+                // A "future" syslog date really means it is from last year - the
+                // classic New Year's Eve log-reading bug.
+                if candidate > now + Duration::days(1) {
+                    if year == now.year() {
+                        // It's in the future and we assumed the current year; it must be last year.
+                        continue;
+                    }
+                }
+                return Some(candidate);
+            }
         }
     }
 
@@ -91,6 +93,14 @@ mod tests {
 
     fn at(y: i32, m: u32, d: u32, h: u32, mi: u32) -> DateTime<Local> {
         Local.with_ymd_and_hms(y, m, d, h, mi, 0).unwrap()
+    }
+
+    #[test]
+    fn parses_feb_29_in_a_non_leap_year() {
+        let resolved = resolve("Feb 29 18:41:04", None, at(2025, 3, 1, 10, 0)).unwrap();
+        assert_eq!(resolved.year(), 2024);
+        assert_eq!(resolved.month(), 2);
+        assert_eq!(resolved.day(), 29);
     }
 
     #[test]
