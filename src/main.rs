@@ -27,6 +27,11 @@ struct Cli {
     #[arg(short, long)]
     file: Option<String>,
 
+    /// Explore a built-in sample incident, no OOM kill or log access required.
+    /// Works the same however oom-tui was installed.
+    #[arg(long, conflicts_with = "file")]
+    demo: bool,
+
     /// Boot offset to inspect: 0 is the current boot, -1 the previous one.
     /// Use this to find the OOM kill that caused a reboot.
     #[arg(short, long, allow_hyphen_values = true, conflicts_with = "all_boots")]
@@ -80,11 +85,26 @@ fn main() -> ExitCode {
     }
 }
 
+/// The bundled sample, compiled into the binary so `--demo` works for every
+/// install method - a release binary carries no `examples/` directory on disk.
+const DEMO_LOG: &str = include_str!("../examples/sample-oom.log");
+
 fn run() -> Result<ExitCode> {
     let cli = Cli::parse();
     let opts = cli.source_options();
 
-    let source = source::load(&opts)?;
+    let source = if cli.demo {
+        source::LogSource {
+            description: "built-in demo".to_string(),
+            text: DEMO_LOG.to_string(),
+            // Not this machine's boot; the sample carries dated (dmesg -T)
+            // stamps that resolve on their own, so no boot anchor is needed.
+            is_live_local: false,
+            warning: None,
+        }
+    } else {
+        source::load(&opts)?
+    };
     let mut events = parser::parse_log(&source.text);
 
     // Uptime stamps are only datable against the boot they came from, so the

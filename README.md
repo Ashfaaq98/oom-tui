@@ -57,10 +57,11 @@ Open OOM incidents from the current boot's kernel journal:
 oom-tui
 ```
 
-Try the bundled example:
+No OOM kills yet? Explore a built-in sample incident — this works no matter how
+you installed oom-tui, and needs no log access:
 
 ```bash
-oom-tui --file examples/sample-oom.log
+oom-tui --demo
 ```
 
 Once inside, press `1`–`4` to scan different log sources directly from the
@@ -84,6 +85,7 @@ oom-tui --format json | jq -r '.[] | select(.scope == "cgroup") | .victim_name'
 
 | Option | Purpose |
 | --- | --- |
+| `--demo` | Explore a built-in sample incident (no log access needed). |
 | `-f`, `--file <FILE>` | Read a file; use `-` for stdin. |
 | `-b`, `--boot <N>` | Inspect boot `0` (current), `-1` (previous), and so on. |
 | `--all-boots` | Search every retained journal boot. |
