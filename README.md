@@ -8,10 +8,10 @@
 [![Rust 1.75+](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](#development)
 [![Platform: Linux](https://img.shields.io/badge/platform-linux-lightgrey.svg)](#requirements)
 
+![oom-tui demo](docs/assets/demo.gif)
+
 **A terminal forensics console for Linux OOM kills.**  
 Reconstructs scattered kernel log lines into structured, navigable incidents with the original evidence preserved alongside the analysis.
-
-![oom-tui demo](docs/assets/demo.gif)
 
 </div>
 
