@@ -29,7 +29,7 @@ root-cause oracle. Missing kernel data stays missing rather than guessed.
 - **Landing Dashboard**: system specs, log source health status, and quick-action hotkeys at a glance
 - **Master-Detail Console**: numbered incident list, structured investigation, and raw kernel evidence side-by-side with focused-pane highlighting
 - **Forensic Parser**: handles global OOM kills, memory-cgroup kills, and `oom_kill_allocating_task` reports
-- **Kubernetes & Container Awareness**: decodes cgroup paths into pod, container, namespace, and runtime (Docker, Podman, systemd)
+- **Kubernetes & Container Awareness**: decodes cgroup paths into pod, container, QoS class, and runtime (Docker, Podman, systemd)
 - **Multiple Log Sources**: journalctl (any boot), dmesg, syslog, files, or stdin pipe
 - **Three Themes**: Midnight, Gruvbox, and Catppuccin color palettes
 - **Structured Output**: JSON, JSONL, and table formats for scripting and CI pipelines
