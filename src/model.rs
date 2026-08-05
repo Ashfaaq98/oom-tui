@@ -102,7 +102,12 @@ impl OomEvent {
     /// virtual address space).
     pub fn rss_total_kb(&self) -> Option<u64> {
         match (self.anon_rss_kb, self.file_rss_kb, self.shmem_rss_kb) {
-            (Some(a), Some(f), Some(s)) => Some(a + f + s),
+            // Saturating rather than `+`: each field is parsed as an unbounded
+            // u64 straight from an untrusted log, so three near-u64::MAX values
+            // would otherwise overflow - a panic in debug, a silently wrapped
+            // (tiny) figure in release. Neither is acceptable in a forensics
+            // tool that must never lie or crash on hostile input.
+            (Some(a), Some(f), Some(s)) => Some(a.saturating_add(f).saturating_add(s)),
             _ => None,
         }
     }
