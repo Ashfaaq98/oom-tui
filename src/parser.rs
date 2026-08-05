@@ -101,15 +101,33 @@ fn strip_prefix(line: &str) -> (Option<String>, &str) {
     }
     if let Some(caps) = re.dmesg_human_prefix.captures(line) {
         let ts = caps.name("ts").unwrap().as_str().to_string();
-        let rest = caps.name("rest").unwrap();
-        return (Some(ts), &line[rest.start()..rest.end()]);
+        let rest = &line[caps.name("rest").unwrap().start()..];
+        return (Some(ts), strip_embedded_uptime(rest));
     }
     if let Some(caps) = re.syslog_prefix.captures(line) {
         let ts = caps.name("ts").unwrap().as_str().to_string();
-        let rest = caps.name("rest").unwrap();
-        return (Some(ts), &line[rest.start()..rest.end()]);
+        let rest = &line[caps.name("rest").unwrap().start()..];
+        return (Some(ts), strip_embedded_uptime(rest));
     }
     (None, line)
+}
+
+/// rsyslog keeps the kernel's own `[  1234.56]` uptime bracket *inside* the
+/// message, so `/var/log/kern.log` lines carry two prefixes:
+///
+///   `Jan 15 10:23:45 host kernel: [ 1234.56] Out of memory: Killed process ...`
+///
+/// After the outer syslog prefix is stripped, the body still begins with that
+/// bracket and matches none of the OOM regexes, so the whole event was being
+/// dropped. Peel the embedded uptime bracket too, keeping the outer wall-clock
+/// timestamp (more useful than uptime). Only a numeric uptime is stripped, so a
+/// process name that happens to start with `[` is left untouched.
+fn strip_embedded_uptime(rest: &str) -> &str {
+    let re = regexes();
+    if let Some(caps) = re.dmesg_prefix.captures(rest) {
+        return &rest[caps.name("rest").unwrap().start()..];
+    }
+    rest
 }
 
 /// Read one task-dump row.
@@ -374,6 +392,21 @@ mod tests {
     }
 
     #[test]
+    fn parses_rsyslog_line_with_embedded_kernel_uptime_bracket() {
+        // The standard Debian/Ubuntu /var/log/kern.log form: a syslog prefix
+        // followed by the kernel's own [uptime] bracket. This was silently
+        // dropped before the embedded bracket was peeled.
+        let line = "Jan 15 10:23:45 host kernel: [ 1234.567890] Out of memory: Killed process 4242 (chrome) total-vm:100kB, anon-rss:50kB, file-rss:0kB, shmem-rss:0kB, UID:1000 pgtables:16kB oom_score_adj:0";
+        let events = parse_log(line);
+        assert_eq!(events.len(), 1);
+        let e = &events[0];
+        assert_eq!(e.victim_name, "chrome");
+        assert_eq!(e.victim_pid, 4242);
+        // The outer wall-clock timestamp is kept, not the embedded uptime.
+        assert_eq!(e.timestamp.as_deref(), Some("Jan 15 10:23:45"));
+    }
+
+    #[test]
     fn parses_human_readable_dmesg_timestamp() {
         let events = parse_log(DMESG_HUMAN_SAMPLE);
         assert_eq!(events.len(), 1);
@@ -570,6 +603,10 @@ mod robustness {
             "Out of memory: Killed process",
             // Numbers far beyond what the fields can hold.
             "Out of memory: Killed process 99999999999999999999 (x) total-vm:99999999999999999999kB, anon-rss:1kB, file-rss:1kB, shmem-rss:1kB, UID:0 oom_score_adj:0",
+            // Three near-u64::MAX RSS values: their sum overflows u64, which used
+            // to panic in `rss_total_kb`. The `1kB` rss fields above never
+            // exercised the summing path, so this case is what guards it.
+            "Out of memory: Killed process 1 (x) total-vm:1kB, anon-rss:9999999999999999999kB, file-rss:9999999999999999999kB, shmem-rss:9999999999999999999kB, UID:0 oom_score_adj:0",
             // Multi-byte characters at a slicing boundary.
             "[ 1.0] Out of memory: Killed process 1 (日本語プロセス) total-vm:1kB, anon-rss:1kB, file-rss:1kB, shmem-rss:1kB, UID:0 oom_score_adj:0",
             // A process table row with too few columns to be real.
