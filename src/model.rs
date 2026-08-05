@@ -9,12 +9,10 @@
 pub struct ProcessEntry {
     pub pid: u32,
     pub uid: u32,
-    pub tgid: u32,
     /// Virtual size, converted from the pages the kernel prints.
     pub total_vm_kb: u64,
     /// Resident size, converted from the pages the kernel prints.
     pub rss_kb: u64,
-    pub swapents: u64,
     pub oom_score_adj: i32,
     pub name: String,
 }

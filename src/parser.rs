@@ -167,13 +167,14 @@ fn parse_process_row(pid: u32, rest: &str, num_cols: &mut Option<usize>) -> Opti
         return None; // Row truncated before name
     }
 
+    // tgid (col 1) and swapents (col c-2) are deliberately not read: nothing
+    // downstream uses them, and parsing swapents with `?` used to drop an
+    // otherwise-valid row when that column was malformed.
     Some(ProcessEntry {
         pid,
         uid: tokens[0].parse().ok()?,
-        tgid: tokens[1].parse().ok()?,
         total_vm_kb: tokens[2].parse::<u64>().ok()?.saturating_mul(PAGE_SIZE_KB),
         rss_kb: tokens[3].parse::<u64>().ok()?.saturating_mul(PAGE_SIZE_KB),
-        swapents: tokens[c - 2].parse().ok()?,
         oom_score_adj: tokens[c - 1].parse().ok()?,
         name: tokens[c..].join(" "),
     })
@@ -205,6 +206,18 @@ pub fn parse_log(text: &str) -> Vec<OomEvent> {
         }
 
         if let Some(caps) = re.trigger.captures(body) {
+            // A trigger line begins a fresh OOM report. If a previous report's
+            // task dump / Mem-Info / constraint is still pending, it never
+            // reached a "Killed process" line (a ring buffer that wrapped
+            // mid-event) - drop it, so its process table does not bleed into
+            // this event and corrupt top_consumers / victim_was_largest.
+            pending_constraint = None;
+            pending_limit_cgroup = None;
+            pending_processes.clear();
+            pending_num_cols = None;
+            pending_mem = MemInfo::default();
+            pending_raw.clear();
+
             pending_trigger = Some((
                 caps.name("proc").unwrap().as_str().trim().to_string(),
                 caps.name("gfp").unwrap().as_str().to_string(),
@@ -628,6 +641,41 @@ mod robustness {
                 let _ = event.top_consumers(4);
             }
         }
+    }
+
+    #[test]
+    fn truncated_task_dump_does_not_bleed_into_the_next_event() {
+        // Event A's kill line was lost to a ring-buffer wrap, but its task dump
+        // survived. Event B is a complete report. B must NOT inherit A's tasks.
+        let log = "\
+[ 100.0] doomed invoked oom-killer: gfp_mask=0x0, order=0, oom_score_adj=0
+[ 100.1] Tasks state (memory values in pages):
+[ 100.2] [ pid ] uid tgid total_vm rss pgtables_bytes swapents oom_score_adj name
+[ 100.3] [  111]  0  111  999999  888888  0 0 0 ghost-from-event-a
+[ 200.0] victim invoked oom-killer: gfp_mask=0x0, order=0, oom_score_adj=0
+[ 200.1] Tasks state (memory values in pages):
+[ 200.2] [ pid ] uid tgid total_vm rss pgtables_bytes swapents oom_score_adj name
+[ 200.3] [  222]  0  222  100  90  0 0 0 real-victim
+[ 200.4] Out of memory: Killed process 222 (real-victim) total-vm:400kB, anon-rss:360kB, file-rss:0kB, shmem-rss:0kB, UID:0 oom_score_adj:0
+";
+        let events = parse_log(log);
+        assert_eq!(
+            events.len(),
+            1,
+            "only the report with a kill line is an event"
+        );
+        let names: Vec<&str> = events[0]
+            .processes
+            .iter()
+            .map(|p| p.name.as_str())
+            .collect();
+        assert_eq!(
+            names,
+            ["real-victim"],
+            "event A's orphaned task must not leak in"
+        );
+        // And the biggest-consumer analysis is not poisoned by the ghost row.
+        assert_eq!(events[0].top_consumers(1)[0].name, "real-victim");
     }
 
     #[test]
