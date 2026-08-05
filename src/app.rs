@@ -47,6 +47,11 @@ pub struct App {
     raw_horizontal_max_scroll: u16,
     detail_max_scroll: u16,
     pub focus: FocusPane,
+    /// Whether the Evidence pane is actually on screen. It renders only in the
+    /// wide (>= 90 col) master-detail layout, so on a narrow terminal the focus
+    /// cycle must skip it - otherwise Tab lands focus on an undrawn pane and the
+    /// arrow keys scroll content nobody can see. Updated every draw.
+    evidence_visible: bool,
     pub help_visible: bool,
     pub show_landing: bool,
     pub is_loading: bool,
@@ -84,6 +89,7 @@ impl App {
             raw_horizontal_max_scroll: 0,
             detail_max_scroll: 0,
             focus: FocusPane::Incidents,
+            evidence_visible: false,
             help_visible: false,
             show_landing,
             is_loading: false,
@@ -136,17 +142,21 @@ impl App {
     pub fn focus_next(&mut self) {
         self.focus = match self.focus {
             FocusPane::Incidents => FocusPane::Details,
-            FocusPane::Details => FocusPane::Evidence,
+            // Skip Evidence when it isn't rendered (narrow layout).
+            FocusPane::Details if self.evidence_visible => FocusPane::Evidence,
+            FocusPane::Details => FocusPane::Incidents,
             FocusPane::Evidence => FocusPane::Incidents,
         };
     }
 
-    pub fn focus_details(&mut self) {
-        self.focus = FocusPane::Details;
-    }
-
-    pub fn focus_evidence(&mut self) {
-        self.focus = FocusPane::Evidence;
+    /// Called each draw with whether the Evidence pane is currently on screen.
+    /// If it has just gone off screen while focused, move focus back to Details
+    /// so the highlight and the arrow keys don't target an invisible pane.
+    pub fn set_evidence_visible(&mut self, visible: bool) {
+        self.evidence_visible = visible;
+        if !visible && self.focus == FocusPane::Evidence {
+            self.focus = FocusPane::Details;
+        }
     }
 
     pub fn cycle_theme(&mut self) {
@@ -266,8 +276,9 @@ mod tests {
     }
 
     #[test]
-    fn focus_cycles_through_all_master_detail_panes() {
+    fn focus_cycles_through_all_master_detail_panes_when_evidence_is_visible() {
         let mut app = app();
+        app.set_evidence_visible(true);
         assert_eq!(app.focus, FocusPane::Incidents);
         app.focus_next();
         assert_eq!(app.focus, FocusPane::Details);
@@ -275,6 +286,29 @@ mod tests {
         assert_eq!(app.focus, FocusPane::Evidence);
         app.focus_next();
         assert_eq!(app.focus, FocusPane::Incidents);
+    }
+
+    #[test]
+    fn focus_skips_evidence_pane_when_it_is_not_rendered() {
+        let mut app = app();
+        app.set_evidence_visible(false); // narrow layout
+        app.focus_next();
+        assert_eq!(app.focus, FocusPane::Details);
+        // Evidence must be skipped - it isn't on screen.
+        app.focus_next();
+        assert_eq!(app.focus, FocusPane::Incidents);
+    }
+
+    #[test]
+    fn focus_leaves_evidence_when_it_goes_off_screen() {
+        let mut app = app();
+        app.set_evidence_visible(true);
+        app.focus_next();
+        app.focus_next();
+        assert_eq!(app.focus, FocusPane::Evidence);
+        // Terminal shrinks below the wide-layout threshold.
+        app.set_evidence_visible(false);
+        assert_eq!(app.focus, FocusPane::Details);
     }
 
     #[test]

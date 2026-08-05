@@ -74,6 +74,9 @@ fn palette(theme: Theme) -> Palette {
 
 pub fn draw(f: &mut Frame, app: &mut App) {
     let area = f.size();
+    // The Evidence pane exists only in the wide master-detail layout; keep the
+    // focus cycle in sync with what is actually rendered.
+    app.set_evidence_visible(!app.show_landing && area.width >= 90);
     let colors = palette(app.theme);
     f.render_widget(
         Block::default().style(Style::default().bg(colors.surface)),
