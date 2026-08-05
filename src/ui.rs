@@ -466,8 +466,8 @@ fn draw_landing_quick_actions(f: &mut Frame, area: Rect, colors: Palette) {
         quick_action_item("3", "Inspect Previous Boot", "journalctl -b -1", colors),
         quick_action_item(
             "4",
-            "Load Sample OOM Log File",
-            "examples/sample-oom.log",
+            "Explore Built-in Sample",
+            "bundled demo — no log access needed",
             colors,
         ),
         quick_action_item("h", "Toggle Incident Console", "Master-Detail view", colors),

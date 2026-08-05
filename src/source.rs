@@ -21,6 +21,11 @@ pub enum BootScope {
     All,
 }
 
+/// The bundled sample incident, compiled into the binary. A release binary
+/// ships no `examples/` directory, so the demo must travel inside the executable
+/// for `--demo` and the landing-page "sample" action to work on every install.
+const DEMO_LOG: &str = include_str!("../examples/sample-oom.log");
+
 /// How the caller wants logs located.
 #[derive(Debug, Clone, Default)]
 pub struct SourceOptions {
@@ -31,6 +36,9 @@ pub struct SourceOptions {
     pub since: Option<String>,
     /// Passed through to `journalctl --until`.
     pub until: Option<String>,
+    /// Show the built-in sample instead of reading any real log. Treated as a
+    /// first-class source so `--demo`, the landing action, and reload all agree.
+    pub demo: bool,
 }
 
 impl SourceOptions {
@@ -60,6 +68,17 @@ pub struct LogSource {
 /// `dmesg`, and finally `/var/log/{syslog,messages}`. Returns the first one
 /// that produces readable output.
 pub fn load(opts: &SourceOptions) -> Result<LogSource> {
+    if opts.demo {
+        return Ok(LogSource {
+            description: "built-in demo".to_string(),
+            text: DEMO_LOG.to_string(),
+            // Not this machine's boot; the sample carries dated (dmesg -T)
+            // stamps that resolve on their own, so no boot anchor is needed.
+            is_live_local: false,
+            warning: None,
+        });
+    }
+
     if let Some(path) = &opts.file {
         return load_file(path);
     }

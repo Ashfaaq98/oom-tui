@@ -69,6 +69,7 @@ impl Cli {
             },
             since: self.since.clone(),
             until: self.until.clone(),
+            demo: self.demo,
         }
     }
 }
@@ -85,26 +86,11 @@ fn main() -> ExitCode {
     }
 }
 
-/// The bundled sample, compiled into the binary so `--demo` works for every
-/// install method - a release binary carries no `examples/` directory on disk.
-const DEMO_LOG: &str = include_str!("../examples/sample-oom.log");
-
 fn run() -> Result<ExitCode> {
     let cli = Cli::parse();
     let opts = cli.source_options();
 
-    let source = if cli.demo {
-        source::LogSource {
-            description: "built-in demo".to_string(),
-            text: DEMO_LOG.to_string(),
-            // Not this machine's boot; the sample carries dated (dmesg -T)
-            // stamps that resolve on their own, so no boot anchor is needed.
-            is_live_local: false,
-            warning: None,
-        }
-    } else {
-        source::load(&opts)?
-    };
+    let source = source::load(&opts)?;
     let mut events = parser::parse_log(&source.text);
 
     // Uptime stamps are only datable against the boot they came from, so the
@@ -257,9 +243,9 @@ fn event_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut A
                     }
                     KeyCode::Char('4') => {
                         app.is_loading = true;
-                        app.loading_message = "loading examples/sample-oom.log...".to_string();
+                        app.loading_message = "loading built-in sample...".to_string();
                         terminal.draw(|f| ui::draw(f, app))?;
-                        load_quick_source(app, QuickSource::SampleLog);
+                        load_quick_source(app, QuickSource::Demo);
                         app.is_loading = false;
                     }
                     _ => {}
@@ -273,7 +259,7 @@ enum QuickSource {
     CurrentBoot,
     AllBoots,
     PrevBoot,
-    SampleLog,
+    Demo,
 }
 
 fn load_quick_source(app: &mut App, source: QuickSource) {
@@ -290,8 +276,8 @@ fn load_quick_source(app: &mut App, source: QuickSource) {
             boot: BootScope::Offset(-1),
             ..Default::default()
         },
-        QuickSource::SampleLog => SourceOptions {
-            file: Some("examples/sample-oom.log".to_string()),
+        QuickSource::Demo => SourceOptions {
+            demo: true,
             ..Default::default()
         },
     };
