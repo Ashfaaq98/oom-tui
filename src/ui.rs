@@ -514,45 +514,54 @@ fn quick_action_item(
 }
 
 fn draw_landing_guide(f: &mut Frame, area: Rect, colors: Palette) {
-    let lines = vec![
-        section("HOW OOM-TUI FORENSICS WORKS", colors),
-        Line::styled(
-            " • Host vs Cgroup:",
-            Style::default()
-                .fg(colors.accent)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Line::styled(
-            "   Differentiates host-wide exhaustion from cgroup limit breaches.",
-            Style::default().fg(colors.text),
-        ),
-        Line::from(""),
-        Line::styled(
-            " • Culprit Identification:",
-            Style::default()
-                .fg(colors.accent)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Line::styled(
-            "   Flags when victim process was collateral damage rather than culprit.",
-            Style::default().fg(colors.text),
-        ),
-        Line::from(""),
-        Line::styled(
-            " • Raw Kernel Evidence:",
-            Style::default()
-                .fg(colors.accent)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Line::styled(
-            "   Preserves exact dmesg / journal lines for audit and proof.",
-            Style::default().fg(colors.text),
-        ),
-    ];
+    let step = |num: &'static str, title: &'static str, desc: &'static str| -> Vec<Line<'static>> {
+        vec![
+            Line::from(vec![
+                Span::styled(
+                    format!(" {num} "),
+                    Style::default()
+                        .fg(colors.text)
+                        .bg(colors.selection)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw("  "),
+                Span::styled(
+                    title,
+                    Style::default()
+                        .fg(colors.accent)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]),
+            Line::styled(format!("      {desc}"), Style::default().fg(colors.text)),
+            Line::from(""),
+        ]
+    };
+
+    let mut lines: Vec<Line<'static>> = vec![Line::from(""), Line::from("")];
+    lines.extend(step(
+        "01",
+        "DETECT",
+        "Find OOM events across journal sources.",
+    ));
+    lines.extend(step(
+        "02",
+        "RECONSTRUCT",
+        "Group scattered kernel messages into one incident.",
+    ));
+    lines.extend(step(
+        "03",
+        "IDENTIFY",
+        "Separate the killed process from the likely culprit.",
+    ));
+    lines.extend(step(
+        "04",
+        "VERIFY",
+        "Keep the original kernel evidence for review.",
+    ));
 
     f.render_widget(
         Paragraph::new(lines).block(panel(
-            panel_title("FORENSICS CHEAT-SHEET", false, colors),
+            panel_title("HOW OOM-TUI WORKS", false, colors),
             false,
             colors,
         )),
