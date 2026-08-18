@@ -238,6 +238,24 @@ mod tests {
     }
 
     #[test]
+    fn decodes_standalone_containerd_scope() {
+        // A containerd container run outside Kubernetes (e.g. via nerdctl with
+        // the systemd cgroup driver). Without a `kubepods` ancestor this reaches
+        // the standalone runtime branch, which the k8s path otherwise shadows.
+        let id = identify("/system.slice/containerd-3f8a9c2b1d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a.scope").unwrap();
+        assert_eq!(id.runtime, Runtime::Containerd);
+        assert!(id.container_id.unwrap().starts_with("3f8a9c2b"));
+        assert!(id.pod_uid.is_none());
+    }
+
+    #[test]
+    fn decodes_standalone_crio_scope() {
+        let id = identify("/machine.slice/crio-3f8a9c2b1d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a.scope").unwrap();
+        assert_eq!(id.runtime, Runtime::CriO);
+        assert!(id.container_id.is_some());
+    }
+
+    #[test]
     fn decodes_systemd_service() {
         let id = identify("/system.slice/nginx.service").unwrap();
         assert_eq!(id.runtime, Runtime::SystemdUnit);
