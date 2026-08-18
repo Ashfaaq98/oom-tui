@@ -40,3 +40,9 @@ chrono = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 unicode-width = "0.1"
+
+[dev-dependencies]
+# Drives the real binary through a pseudo-terminal in the TUI integration test.
+# libc (not a heavier pty crate) keeps the 1.75 MSRV safe and the test in the
+# default suite.
+libc = "0.2"
