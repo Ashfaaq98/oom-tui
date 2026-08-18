@@ -1196,11 +1196,20 @@ fn detail_lines(event: &OomEvent, colors: Palette) -> Vec<Line<'static>> {
     if let Some(pct) = event.rss_share_of_ram() {
         let bar_len = 20;
         let filled = ((pct / 100.0) * bar_len as f64).clamp(0.0, bar_len as f64) as usize;
+        // State the denominator: it is the RAM the *log* reports, which is not
+        // necessarily the machine running oom-tui (a --file from another host).
+        let total = event
+            .mem
+            .as_ref()
+            .and_then(|m| m.total_ram_kb)
+            .map(|kb| format!(" of {:.1} GiB (from log)", kb as f64 / 1024.0 / 1024.0))
+            .unwrap_or_default();
         let bar = format!(
-            "[{}{}] {:.1}% of system RAM",
+            "[{}{}] {:.1}%{}",
             "█".repeat(filled),
             "░".repeat(bar_len - filled),
-            pct
+            pct,
+            total
         );
         lines.push(detail_row("RAM Impact", bar, colors.warning, colors));
     }
@@ -1261,13 +1270,33 @@ fn detail_lines(event: &OomEvent, colors: Palette) -> Vec<Line<'static>> {
             Style::default().fg(colors.muted),
         ));
     } else {
-        for process in event.top_consumers(usize::MAX) {
-            lines.push(Line::from(format!(
-                "  {:>7}  {:<24}  {}",
-                process.pid,
-                process.name,
-                exact_memory(Some(process.rss_kb))
-            )));
+        // Cap the summary at the heaviest tasks - a busy host dumps hundreds of
+        // rows, which buries the signal. The full table is in RAW EVIDENCE.
+        const SNAPSHOT_LIMIT: usize = 12;
+        let total = event.processes.len();
+        for process in event.top_consumers(SNAPSHOT_LIMIT) {
+            let is_victim = process.pid == event.victim_pid;
+            let marker = if is_victim { "▶" } else { " " };
+            lines.push(Line::styled(
+                format!(
+                    "{} {:>7}  {:<24}  {}",
+                    marker,
+                    process.pid,
+                    process.name,
+                    exact_memory(Some(process.rss_kb))
+                ),
+                Style::default().fg(if is_victim {
+                    colors.critical
+                } else {
+                    colors.text
+                }),
+            ));
+        }
+        if total > SNAPSHOT_LIMIT {
+            lines.push(Line::styled(
+                format!("  (+{} more — see raw evidence)", total - SNAPSHOT_LIMIT),
+                Style::default().fg(colors.muted),
+            ));
         }
     }
     lines
