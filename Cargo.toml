@@ -11,7 +11,9 @@ repository = "https://github.com/Ashfaaq98/oom-tui"
 homepage = "https://github.com/Ashfaaq98/oom-tui"
 keywords = ["oom", "linux", "kernel", "tui", "sre"]
 categories = ["command-line-utilities", "development-tools::debugging"]
-exclude = ["/.github"]
+# /docs is README imagery (the demo GIF) - useful on GitHub, dead weight in the
+# published crate. examples/ stays: the sample is include_str!'d into the binary.
+exclude = ["/.github", "/docs"]
 
 [lib]
 name = "oom_tui"
@@ -25,10 +27,14 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.103"
-clap = { version = "=4.4.18", features = ["derive"] }
-clap_lex = "=0.6.0"
-crossterm = "=0.27.0"
-ratatui = "=0.26.3"
+# Not exact-pinned: `=` versions make the published library painful to depend
+# on. The ranges below stay within the minors that keep the 1.75 MSRV (clap on
+# 4.4.x, clap_lex < 0.7), and Cargo.lock still pins the exact tested builds.
+# clap_lex is a transitive pin, not used directly - it holds the MSRV bound.
+clap = { version = "~4.4.18", features = ["derive"] }
+clap_lex = "0.6.0"
+crossterm = "0.27"
+ratatui = "0.26.3"
 regex = "1.13.1"
 chrono = "0.4"
 serde = { version = "1.0", features = ["derive"] }
