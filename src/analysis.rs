@@ -62,13 +62,25 @@ pub fn investigate(event: &OomEvent) -> Investigation {
     } else {
         diagnosis.push("Allocation trigger: not reported by kernel.".to_string());
     }
-    if event.victim_was_largest() == Some(false) {
-        if let Some(largest) = event.top_consumers(1).first() {
+    match event.victim_was_largest() {
+        // The victim is often collateral damage; name the real memory hog.
+        Some(false) => {
+            if let Some(largest) = event.top_consumers(1).first() {
+                diagnosis.push(format!(
+                    "Largest recorded task: {} (PID {}).",
+                    largest.name, largest.pid
+                ));
+            }
+        }
+        // Say so explicitly - confirmation that the killed process really was
+        // the heaviest is exactly what the reader is checking for.
+        Some(true) => {
             diagnosis.push(format!(
-                "Largest recorded task: {} (PID {}).",
-                largest.name, largest.pid
+                "Victim was the largest of {} tasks examined.",
+                event.processes.len()
             ));
         }
+        None => {}
     }
     diagnosis.truncate(5);
 
@@ -111,6 +123,35 @@ mod tests {
             .any(|line| line.contains("not reported")));
         assert!(report.summary.len() <= 5);
         assert!(report.diagnosis.len() <= 5);
+    }
+
+    #[test]
+    fn confirms_when_the_victim_was_the_largest_task() {
+        use crate::model::ProcessEntry;
+        let event = OomEvent {
+            victim_name: "claude".to_string(),
+            victim_pid: 449088,
+            processes: vec![
+                ProcessEntry {
+                    pid: 449088,
+                    rss_kb: 14_000_000,
+                    name: "claude".to_string(),
+                    ..Default::default()
+                },
+                ProcessEntry {
+                    pid: 399347,
+                    rss_kb: 700_000,
+                    name: "chrome".to_string(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let report = investigate(&event);
+        assert!(report
+            .diagnosis
+            .iter()
+            .any(|line| line.contains("largest of 2 tasks")));
     }
 
     #[test]
