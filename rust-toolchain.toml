@@ -1,0 +1,9 @@
+# Pins the toolchain and the components local checks need, so `cargo fmt` and
+# `cargo clippy` behave the same for every contributor. Honoured by rustup only.
+#
+# The CI MSRV job pins 1.75 explicitly (`cargo +1.75.0 ...`) so this file does
+# not hijack that check. Swap "stable" for a specific version (e.g. "1.90.0")
+# to also make CI deterministic across rustc releases.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]

@@ -25,6 +25,11 @@ cargo run -- --file <some-log>
 There is nothing else to install. The tool shells out to `journalctl`/`dmesg`
 at runtime but needs neither to run its tests.
 
+`rust-toolchain.toml` pins the toolchain and the `rustfmt`/`clippy` components
+the checks below need — [rustup](https://rustup.rs) applies it automatically. On
+a distro Rust without rustup, install the components directly instead, e.g. on
+Fedora: `sudo dnf install rustfmt clippy`.
+
 ## Before opening a pull request
 
 ```bash

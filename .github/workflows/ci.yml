@@ -41,8 +41,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.75.0
       - uses: Swatinem/rust-cache@v2
+      # `+1.75.0` forces this toolchain even though rust-toolchain.toml pins a
+      # newer channel - otherwise rustup would honour the file and this check
+      # would silently run on the wrong version, defeating the MSRV guarantee.
       # --locked so the committed Cargo.lock is what actually gets verified.
-      - run: cargo check --locked --all-targets
+      - run: cargo +1.75.0 check --locked --all-targets
 
   # "Download one file and run it on the broken box" is the whole distribution
   # story, and the broken box has no Rust toolchain. Prove the static builds
