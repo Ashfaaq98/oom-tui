@@ -199,6 +199,61 @@ fn truncate(s: &str, max: usize) -> String {
     }
 }
 
+/// A plain-text summary of one incident, for the `c` copy action - the
+/// investigation console's content flattened so it can be pasted into a ticket.
+pub fn incident_text(event: &OomEvent) -> String {
+    let report = crate::analysis::investigate(event);
+    let mut out = format!(
+        "OOM incident — {} (PID {})\n",
+        event.victim_name, event.victim_pid
+    );
+    for line in &report.summary {
+        out.push_str(&format!("  {line}\n"));
+    }
+    out.push_str("\nDiagnosis:\n");
+    for line in &report.diagnosis {
+        out.push_str(&format!("  - {line}\n"));
+    }
+    if !event.processes.is_empty() {
+        out.push_str("\nTop tasks by RSS:\n");
+        for p in event.top_consumers(10) {
+            out.push_str(&format!(
+                "  {:>7}  {:<20}  {:.1} MiB\n",
+                p.pid,
+                p.name,
+                p.rss_kb as f64 / 1024.0
+            ));
+        }
+    }
+    out
+}
+
+/// Standard base64, for wrapping copied text in an OSC 52 clipboard sequence.
+/// Inlined to keep the static binary free of a dependency for ~15 lines.
+pub fn base64(data: &[u8]) -> String {
+    const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
+        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(T[(n >> 18 & 63) as usize] as char);
+        out.push(T[(n >> 12 & 63) as usize] as char);
+        out.push(if chunk.len() > 1 {
+            T[(n >> 6 & 63) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            T[(n & 63) as usize] as char
+        } else {
+            '='
+        });
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -207,6 +262,22 @@ mod tests {
         crate::parser::parse_log(
             "Memory cgroup out of memory: Killed process 42 (node) total-vm:100kB, anon-rss:50kB, file-rss:0kB, shmem-rss:0kB, UID:0 pgtables:4kB oom_score_adj:0",
         )
+    }
+
+    #[test]
+    fn base64_matches_known_vectors() {
+        assert_eq!(base64(b""), "");
+        assert_eq!(base64(b"f"), "Zg==");
+        assert_eq!(base64(b"fo"), "Zm8=");
+        assert_eq!(base64(b"foo"), "Zm9v");
+        assert_eq!(base64(b"foobar"), "Zm9vYmFy");
+    }
+
+    #[test]
+    fn incident_text_is_pasteable() {
+        let text = incident_text(&sample()[0]);
+        assert!(text.contains("node (PID 42)"));
+        assert!(text.contains("Diagnosis:"));
     }
 
     #[test]

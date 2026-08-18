@@ -1,12 +1,9 @@
 //! Best-effort host details for the interactive header.
 
-use std::process::Command;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceInfo {
     pub ram: String,
     pub cpu: String,
-    pub gpu: String,
     pub os: String,
 }
 
@@ -15,7 +12,6 @@ impl DeviceInfo {
         Self {
             ram: total_ram().unwrap_or_else(|| "RAM unavailable".to_string()),
             cpu: cpu_model().unwrap_or_else(|| "CPU unavailable".to_string()),
-            gpu: gpu_model().unwrap_or_else(|| "GPU unavailable".to_string()),
             os: os_version().unwrap_or_else(|| "OS unavailable".to_string()),
         }
     }
@@ -40,29 +36,6 @@ fn cpu_model() -> Option<String> {
             .or_else(|| line.strip_prefix("Hardware\t: "))
     })?;
     Some(model.trim().to_string())
-}
-
-fn gpu_model() -> Option<String> {
-    let output = Command::new("lspci").arg("-mm").output().ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let text = String::from_utf8_lossy(&output.stdout);
-    let line = text.lines().find(|line| {
-        line.contains("\"VGA compatible controller\"")
-            || line.contains("\"3D controller\"")
-            || line.contains("\"Display controller\"")
-    })?;
-    let fields: Vec<&str> = line.split('"').collect();
-    let vendor = fields.get(5).copied().unwrap_or_default();
-    let device = fields.get(7).copied().unwrap_or_default();
-    let name = match (vendor, device) {
-        ("", "") => return None,
-        (_, "") => vendor.to_string(),
-        ("", _) => device.to_string(),
-        _ => format!("{vendor} {device}"),
-    };
-    Some(name.trim().to_string())
 }
 
 fn os_version() -> Option<String> {

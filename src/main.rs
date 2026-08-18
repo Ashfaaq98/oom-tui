@@ -11,7 +11,7 @@ use oom_tui::source::{BootScope, SourceOptions};
 use oom_tui::{parser, report, source, timestamp, ui};
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io::{self, IsTerminal, Write};
-use std::process::ExitCode;
+use std::process::{Command, ExitCode, Stdio};
 use std::time::Duration;
 
 /// oom-tui: OOM-killer forensics for Linux.
@@ -217,6 +217,7 @@ fn event_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut A
                         reload(app);
                         app.is_loading = false;
                     }
+                    KeyCode::Char('c') => copy_focused(app),
                     KeyCode::Char('t') => app.cycle_theme(),
                     KeyCode::Char('h') | KeyCode::Home => app.toggle_landing(),
                     KeyCode::Char('1') => {
@@ -288,6 +289,57 @@ fn load_quick_source(app: &mut App, source: QuickSource) {
 /// the events already on screen remain accessible, and the error is reported via status.
 fn reload(app: &mut App) {
     load_source_options(app, app.source_options.clone());
+}
+
+/// Copy the focused pane to the clipboard: the raw kernel lines when Evidence
+/// is focused, otherwise a plain-text incident summary.
+fn copy_focused(app: &mut App) {
+    let focus = app.focus;
+    let payload = app.selected().map(|event| {
+        if focus == FocusPane::Evidence {
+            (event.raw_lines.join("\n"), "raw kernel evidence")
+        } else {
+            (report::incident_text(event), "incident details")
+        }
+    });
+    if let Some((text, what)) = payload {
+        let method = copy_to_clipboard(&text);
+        app.status = Some(format!("Copied {what} to clipboard (via {method})"));
+    }
+}
+
+/// Put `text` on the clipboard. Desktop clipboard tools are tried first because
+/// they work reliably in a local session; the OSC 52 escape is the fallback for
+/// terminals/SSH that honour it (many, e.g. GNOME Terminal, do not). Returns the
+/// method used so the status line can show it. `wl-copy` covers Wayland,
+/// `xclip`/`xsel` cover X11.
+fn copy_to_clipboard(text: &str) -> &'static str {
+    for (cmd, args) in [
+        ("wl-copy", &[][..]),
+        ("xclip", &["-selection", "clipboard"][..]),
+        ("xsel", &["-b", "-i"][..]),
+    ] {
+        if let Ok(mut child) = Command::new(cmd)
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+        {
+            let wrote = child
+                .stdin
+                .take()
+                .map(|mut pipe| pipe.write_all(text.as_bytes()).is_ok())
+                .unwrap_or(false);
+            if wrote && child.wait().map(|s| s.success()).unwrap_or(false) {
+                return cmd;
+            }
+        }
+    }
+    let mut out = io::stdout();
+    let _ = write!(out, "\x1b]52;c;{}\x07", report::base64(text.as_bytes()));
+    let _ = out.flush();
+    "OSC52"
 }
 
 fn load_source_options(app: &mut App, opts: SourceOptions) {

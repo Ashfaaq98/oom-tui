@@ -118,7 +118,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             ])
             .split(area);
         draw_header(f, root[0], app, colors);
-        draw_incident_list(f, root[1], app, "INCIDENT TIMELINE  ·  newest last", colors);
+        draw_incident_list(f, root[1], app, "INCIDENT TIMELINE", colors);
         draw_detail(f, root[2], app, colors);
         draw_footer(f, root[3], app, colors);
     }
@@ -354,10 +354,10 @@ fn draw_landing_hero(f: &mut Frame, area: Rect, colors: Palette) {
 
 fn draw_landing_system(f: &mut Frame, area: Rect, app: &App, colors: Palette) {
     let mut lines = vec![
+        Line::from(""),
         section("HOST ENVIRONMENT SPECS", colors),
         spec_row("OS Release", &app.device.os, colors.text, colors),
         spec_row("Processor", &app.device.cpu, colors.text, colors),
-        spec_row("Graphics", &app.device.gpu, colors.text, colors),
         spec_row("System RAM", &app.device.ram, colors.accent, colors),
         Line::from(""),
         section("ACTIVE LOG SOURCE STATUS", colors),
@@ -582,8 +582,18 @@ fn separator(colors: Palette) -> Span<'static> {
     Span::styled("│", Style::default().fg(colors.border))
 }
 
-fn draw_incident_list(f: &mut Frame, area: Rect, app: &mut App, title: &str, colors: Palette) {
+fn draw_incident_list(f: &mut Frame, area: Rect, app: &mut App, base_title: &str, colors: Palette) {
     let is_focused = app.focus == FocusPane::Incidents;
+    // Match the other panes: show focus state, not a key hint, in the title.
+    let title = format!(
+        "{base_title}  ·  {}",
+        if is_focused {
+            "FOCUSED"
+        } else {
+            "Tab to focus"
+        }
+    );
+    let title = title.as_str();
     if app.events.is_empty() {
         let message = vec![
             Line::styled(
@@ -646,7 +656,7 @@ fn draw_master_detail(f: &mut Frame, area: Rect, app: &mut App, colors: Palette)
             Constraint::Percentage(100 - left_width),
         ])
         .split(area);
-    draw_incident_list(f, columns[0], app, "INCIDENTS  ·  ↑/↓ select", colors);
+    draw_incident_list(f, columns[0], app, "INCIDENTS", colors);
 
     let right = Layout::default()
         .direction(Direction::Vertical)
@@ -681,7 +691,7 @@ fn draw_raw_evidence(f: &mut Frame, area: Rect, app: &mut App, colors: Palette) 
         .unwrap_or(0);
     app.set_raw_scroll_limits(raw_lines.len(), viewport_lines, max_width, viewport_width);
     let title = if is_focused {
-        "RAW KERNEL EVIDENCE  ·  FOCUSED  ·  ↑/↓ vertical  ←/→ horizontal"
+        "RAW KERNEL EVIDENCE  ·  FOCUSED"
     } else {
         "RAW KERNEL EVIDENCE  ·  Tab to focus"
     };
@@ -774,7 +784,7 @@ fn draw_detail(f: &mut Frame, area: Rect, app: &mut App, colors: Palette) {
     let content_lines = wrapped_line_count(&lines, area.width.saturating_sub(2) as usize);
     app.set_detail_scroll_limits(content_lines, area.height.saturating_sub(2));
     let title = if is_focused {
-        "INCIDENT INVESTIGATION  ·  FOCUSED  ·  ↑/↓ scroll"
+        "INCIDENT INVESTIGATION  ·  FOCUSED"
     } else {
         "INCIDENT INVESTIGATION  ·  Tab to focus"
     };
@@ -937,6 +947,7 @@ fn draw_help(f: &mut Frame, area: Rect, colors: Palette) {
                 .fg(colors.accent)
                 .add_modifier(Modifier::BOLD),
         ),
+        Line::from(" c         copy focused pane (evidence, or incident details)"),
         Line::from(" 1 - 4     quick switch log sources (1:current, 2:all, 3:prev, 4:sample)"),
         Line::from(" r         reload current log source"),
         Line::from(" t         cycle theme (Midnight -> Gruvbox -> Catppuccin)"),
