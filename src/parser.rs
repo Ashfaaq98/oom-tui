@@ -146,19 +146,21 @@ fn parse_process_row(pid: u32, rest: &str, num_cols: &mut Option<usize>) -> Opti
     }
 
     if num_cols.is_none() {
-        let mut count = 0;
-        for token in &tokens {
-            if token.parse::<i64>().is_ok() {
-                count += 1;
-            } else {
-                break;
-            }
-        }
-        // Older kernels use 8 columns, newer use 7.
-        if count == 7 || count == 8 {
+        // The name begins at the first non-numeric token, so the count of
+        // leading numbers is the column count. Kernels vary: 7 classic, 8 with
+        // nr_ptes/nr_pmds, 10 when rss is split into rss/rss_anon/rss_file/
+        // rss_shmem. Accept whatever this kernel uses rather than assuming a
+        // fixed layout - guessing 7 makes a 10-column dump spill three numbers
+        // into every process name. Need uid,tgid,total_vm,rss + oom_score_adj
+        // (>= 5) and a name after them.
+        let count = tokens
+            .iter()
+            .take_while(|t| t.parse::<i64>().is_ok())
+            .count();
+        if count >= 5 && count < tokens.len() {
             *num_cols = Some(count);
         } else {
-            *num_cols = Some(7);
+            return None;
         }
     }
 
@@ -577,6 +579,37 @@ mod tests {
     fn table_header_row_is_not_mistaken_for_a_process() {
         let events = parse_log(FULL_REPORT);
         assert!(events[0].processes.iter().all(|p| p.name != "name"));
+    }
+
+    #[test]
+    fn handles_modern_kernel_that_splits_rss_into_four_columns() {
+        // Real Linux 6.x (Fedora) dump: rss is broken into
+        // rss/rss_anon/rss_file/rss_shmem, giving 10 numeric columns. Guessing 7
+        // used to spill three numbers into the name ("31137792 299520 100 claude").
+        let text = "\
+[ 10.0] claude invoked oom-killer: gfp_mask=0x140cca, order=0, oom_score_adj=0
+[ 10.1] Tasks state (memory values in pages):
+[ 10.2] [  pid  ]   uid  tgid total_vm      rss rss_anon rss_file rss_shmem pgtables_bytes swapents oom_score_adj name
+[ 10.3] [ 449088]  1000 449088  4277548  3530859  3530432      427         0 31137792   299520           100 claude
+[ 10.4] [ 463389]    70 463389  2097334     2505      291      584      1630   266240      279             0 postgres
+[ 10.5] Out of memory: Killed process 449088 (claude) total-vm:17110192kB, anon-rss:14121728kB, file-rss:1708kB, shmem-rss:0kB, UID:1000 oom_score_adj:100";
+        let events = parse_log(text);
+        assert_eq!(events.len(), 1);
+        let procs = &events[0].processes;
+        assert_eq!(procs.len(), 2);
+
+        let claude = procs.iter().find(|p| p.pid == 449088).unwrap();
+        assert_eq!(
+            claude.name, "claude",
+            "name must not absorb numeric columns"
+        );
+        assert_eq!(claude.uid, 1000);
+        assert_eq!(claude.rss_kb, 3530859 * 4);
+        assert_eq!(claude.oom_score_adj, 100);
+
+        let postgres = procs.iter().find(|p| p.pid == 463389).unwrap();
+        assert_eq!(postgres.name, "postgres");
+        assert_eq!(postgres.oom_score_adj, 0);
     }
 
     #[test]
