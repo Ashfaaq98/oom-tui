@@ -2,6 +2,8 @@
 
 # OOM-TUI
 
+**A terminal forensics console for Linux OOM kills.**  
+
 [![CI](https://github.com/Ashfaaq98/oom-tui/actions/workflows/ci.yml/badge.svg)](https://github.com/Ashfaaq98/oom-tui/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Ashfaaq98/oom-tui?display_name=tag&sort=semver)](https://github.com/Ashfaaq98/oom-tui/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -10,30 +12,32 @@
 
 ![oom-tui demo](docs/assets/demo.gif)
 
-**A terminal forensics console for Linux OOM kills.**  
-Reconstructs scattered kernel log lines into structured, navigable incidents with the original evidence preserved alongside the analysis.
-
 </div>
 
-It helps answer three questions quickly:
+When Linux runs out of memory it kills a process and scatters the evidence
+across half a dozen cryptic log lines. `oom-tui` reassembles them into one
+browsable incident, and surfaces the detail almost everyone misses:
+**the process the kernel killed is often not the one that caused the problem.**
 
-1. **What happened**: which process was killed and how much memory it used.
-2. **Why**: whether the kernel reported host-wide pressure or a cgroup limit.
-3. **What proves it**: the untouched kernel evidence beside the analysis.
+At a glance, it tells you:
 
-It is a forensics viewer for existing logs, not a memory monitor, daemon, or
+- **What died**: the process, its PID, and the memory it held.
+- **Who was actually to blame**: the real memory hog, ranked against every
+  other task, because the kernel targets the biggest RSS, not the leaker.
+- **Why**: host-wide exhaustion vs. a container hitting its cgroup limit
+  (very different fixes).
+- **Proof**: the untouched kernel lines, one keypress away.
+
+A forensics viewer for logs that already exist, not a monitor, a daemon, or a
 root-cause oracle. Missing kernel data stays missing rather than guessed.
 
 ## Features
 
-- **Landing Dashboard**: system specs, log source health status, and quick-action hotkeys at a glance
-- **Master-Detail Console**: numbered incident list, structured investigation, and raw kernel evidence side-by-side with focused-pane highlighting
-- **Forensic Parser**: handles global OOM kills, memory-cgroup kills, and `oom_kill_allocating_task` reports
-- **Kubernetes & Container Awareness**: decodes cgroup paths into pod, container, QoS class, and runtime (Docker, Podman, systemd)
-- **Multiple Log Sources**: journalctl (any boot), dmesg, syslog, files, or stdin pipe
-- **Three Themes**: Midnight, Gruvbox, and Catppuccin color palettes
-- **Structured Output**: JSON, JSONL, and table formats for scripting and CI pipelines
-- **Zero Runtime Dependencies**: single static binary, no daemons or background processes
+- **Kill types**: global, memory-cgroup, and `oom_kill_allocating_task`, across old and new kernel task-table layouts.
+- **Container identity**: decodes cgroup paths into pod, container, QoS class, and runtime (Kubernetes, Docker, Podman, containerd, cri-o, systemd).
+- **Sources**: journalctl (any boot), `dmesg`, syslog files, or a piped stream.
+- **Structured output**: JSON, JSONL, and table, with `--exit-code` for CI checks.
+- **Extras**: copy to clipboard (`c`), three color themes, wall-clock timestamps, and a single static binary with nothing to install to run it.
 
 ## Install
 
@@ -45,7 +49,9 @@ curl -fsSL https://github.com/Ashfaaq98/oom-tui/releases/latest/download/install
 oom-tui --version
 ```
 
-Ensure `~/.local/bin` is on your `PATH`. For system installs, updates,
+If `oom-tui` is not found, add `~/.local/bin` to your `PATH` (or reopen your shell).
+
+For system installs, updates,
 uninstalling, a specific version, checksum verification, or building from
 source, see the [installation guide](docs/installation.md).
 
@@ -57,17 +63,17 @@ Open OOM incidents from the current boot's kernel journal:
 oom-tui
 ```
 
-No OOM kills yet? Explore a built-in sample incident — this works no matter how
+No OOM kills yet? Explore a built-in sample incident. This works no matter how
 you installed oom-tui, and needs no log access:
 
 ```bash
 oom-tui --demo
 ```
 
-Once inside, press `1`–`4` to scan different log sources directly from the
+Once inside, press `1` to `4` to scan different log sources directly from the
 landing dashboard. Press `h` to toggle between the dashboard and the incident
-console, `Tab` to cycle pane focus, arrow keys to select or scroll, `t` to
-cycle themes, and `?` for the full keyboard reference.
+console, `Tab` to cycle pane focus, arrow keys to select or scroll, `c` to copy
+the focused pane, `t` to cycle themes, and `?` for the full keyboard reference.
 
 ## Common usage
 
@@ -90,7 +96,7 @@ oom-tui --format json | jq -r '.[] | select(.scope == "cgroup") | .victim_name'
 | `-b`, `--boot <N>` | Inspect boot `0` (current), `-1` (previous), and so on. |
 | `--all-boots` | Search every retained journal boot. |
 | `--since <TIME>` / `--until <TIME>` | Restrict a journal time range. |
-| `--format <FMT>` | Choose `tui`, `table`, `json`, or `jsonl`. |
+| `--format <FMT>` | `auto` (default: TUI on a terminal, table when piped), or force `tui`, `table`, `json`, `jsonl`. |
 | `--exit-code` | Exit `1` if one or more OOM events are found. |
 
 Run `oom-tui --help` for the complete CLI reference.
@@ -118,9 +124,7 @@ order: `journalctl`, `dmesg -T`, `dmesg`, `/var/log/syslog`, then
 permission to read the kernel journal, such as membership of `systemd-journal`
 or `sudo`.
 
-The parser supports global OOM kills, memory-cgroup OOM kills, and
-`oom_kill_allocating_task` reports. JSON field names are stable within a major
-version.
+JSON field names are stable within a major version.
 
 ## Development
 
