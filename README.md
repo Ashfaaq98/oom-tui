@@ -51,6 +51,12 @@ oom-tui --version
 
 If `oom-tui` is not found, add `~/.local/bin` to your `PATH` (or reopen your shell).
 
+With a Rust toolchain, you can instead install from crates.io:
+
+```bash
+cargo install oom-tui
+```
+
 For system installs, updates,
 uninstalling, a specific version, checksum verification, or building from
 source, see the [installation guide](docs/installation.md).
