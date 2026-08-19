@@ -11,13 +11,37 @@ or behaviour changes; the **patch** version is for backwards-compatible fixes.
 
 _Nothing yet._
 
+## [0.5.0] - 2026-08-19
+
+### Added
+
+- Copy the focused pane to the clipboard with `c`: the raw kernel evidence, or a
+  plain-text incident summary. Uses `wl-copy` or `xclip` when present, with an
+  OSC 52 fallback for terminals and SSH.
+- The diagnosis now states when the killed process was itself the largest memory
+  user, not only when it was collateral damage.
+
+### Changed
+
+- Redesigned the investigation console into clearer, outcome-oriented sections.
+- The task snapshot is capped to the top consumers, marks the victim, and the
+  RAM-impact bar shows its denominator.
+- Loosened dependency version constraints so the library is easier to depend on,
+  and slimmed the published crate.
+
+### Fixed
+
+- Process names and `oom_score_adj` were garbled on modern kernels that split
+  RSS into four columns (`rss`, `rss_anon`, `rss_file`, `rss_shmem`). The task
+  table now parses correctly across old and new column layouts.
+
 ## [0.4.0] - 2026-08-05
 
 ### Added
 
 - `--demo` flag, and an "Explore Built-in Sample" action (`4`) on the landing
   dashboard, that open a bundled sample incident. The sample is compiled into
-  the binary, so it works on every install method with no log access — you can
+  the binary, so it works on every install method with no log access. You can
   see the tool in action before you have a real OOM kill.
 
 ### Changed
@@ -31,7 +55,7 @@ _Nothing yet._
 ### Fixed
 
 - **No longer panics on hostile input.** Summing three near-`u64::MAX` RSS
-  values in `rss_total_kb` overflowed — a panic in debug builds, a silently
+  values in `rss_total_kb` overflowed: a panic in debug builds, a silently
   wrapped (tiny) figure in release. It now saturates.
 - **rsyslog logs are no longer dropped.** Standard Debian/Ubuntu
   `/var/log/kern.log` lines carry both a syslog prefix and the kernel's own
@@ -50,7 +74,7 @@ _Nothing yet._
 ### Removed
 
 - A false claim in the README that cgroup decoding includes the Kubernetes
-  _namespace_ — a namespace is not encoded in the cgroup path and was never
+  _namespace_. A namespace is not encoded in the cgroup path and was never
   derived. QoS class (which _is_ decoded) is now documented instead.
 
 ## [0.3.0] - 2026-07-31
@@ -68,7 +92,8 @@ See the [release notes](https://github.com/Ashfaaq98/oom-tui/releases/tag/v0.2.0
 First release. See the
 [release notes](https://github.com/Ashfaaq98/oom-tui/releases/tag/v0.1.0).
 
-[Unreleased]: https://github.com/Ashfaaq98/oom-tui/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Ashfaaq98/oom-tui/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Ashfaaq98/oom-tui/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Ashfaaq98/oom-tui/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Ashfaaq98/oom-tui/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Ashfaaq98/oom-tui/compare/v0.1.0...v0.2.0
