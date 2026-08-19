@@ -1,6 +1,6 @@
 # Maintainer: Ashfaaq98 <63553020+Ashfaaq98@users.noreply.github.com>
 pkgname=oom-tui-bin
-pkgver=0.4.0
+pkgver=0.5.0
 pkgrel=1
 pkgdesc='Terminal UI for OOM-killer forensics on Linux'
 arch=('x86_64' 'aarch64')
@@ -10,8 +10,8 @@ provides=('oom-tui')
 conflicts=('oom-tui')
 source_x86_64=("oom-tui-${pkgver}-x86_64.tar.gz::${url}/releases/download/v${pkgver}/oom-tui-x86_64-unknown-linux-musl.tar.gz")
 source_aarch64=("oom-tui-${pkgver}-aarch64.tar.gz::${url}/releases/download/v${pkgver}/oom-tui-aarch64-unknown-linux-musl.tar.gz")
-sha256sums_x86_64=('87e36943ba407628266e6b0c95df2b85254be66c0bf5b132d1f82b0bb9651385')
-sha256sums_aarch64=('655a21608bafc7d9f143efda717bd1d184d982b7e448e03ea852a492be582a5c')
+sha256sums_x86_64=('c5b24f0b1f6e7c7f21f8a199a8d469341fb464780715ecb87fe50bdff8b2fe63')
+sha256sums_aarch64=('0f89a7a938e584df88cbe0db860f0bd143f88f2d3d784ce20922dadbc3171526')
 
 package() {
 	local dir="oom-tui-v${pkgver}-${CARCH}-unknown-linux-musl"
